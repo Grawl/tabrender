@@ -1,8 +1,10 @@
 # tabrender
 
-Self-hosted Guitar Pro player for sharing tabs with the bands: [It's MyTabs](https://github.com/louislam/its-mytabs)
-plus a renderer that turns every tab into an MP3 with sampled guitars, amp captures and a real drum kit
-(see [render/README.md](render/README.md)). Tabs arrive from a Dropbox folder.
+A self-hosted Songsterr alternative: drop Guitar Pro files into a folder and share them with your band as a
+synced tab player with realistic audio. [It's MyTabs](https://github.com/louislam/its-mytabs) is the player;
+the renderer here turns every tab into an MP3 with sampled guitars, neural amp captures and a real drum kit
+(see [render/README.md](render/README.md)), and the player picks that MP3 up as the default audio track,
+cursor in sync. Tabs arrive from a Dropbox folder; each band gets its own read-only instance.
 
 The renderer is the interesting part: alphaTab exports the score to MIDI plus per-note articulations (palm mute,
 dead notes, bends); a small numpy SFZ sampler plays DI guitar samples with those articulations, double-tracked;
