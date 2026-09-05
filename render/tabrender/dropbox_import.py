@@ -45,57 +45,85 @@ def _copy_if_newer(src: str, dst: str) -> bool:
     return True
 
 
+IGNORE_DIRS = tuple(x.strip().lower() for x in os.environ.get("TABRENDER_DROPBOX_IGNORE", "misc,хранилище табов,old,archive").split(","))
+
+
+def _newest_tab(d: str) -> str | None:
+    cands = [os.path.join(d, n) for n in os.listdir(d) if not n.startswith(".") and n.lower().endswith(TAB_EXTS)]
+    return max(cands, key=os.path.getmtime) if cands else None
+
+
+def _write_tab(tabs_dir: str, tab_id: str, src: str, title: str, artist: str, public: bool) -> bool:
+    """Copy one tab file (+ companion audio) into data/tabs/<tab_id>; returns True if the tab file changed."""
+    name = os.path.basename(src)
+    stem = os.path.splitext(name)[0]
+    tdir = os.path.join(tabs_dir, tab_id)
+    os.makedirs(tdir, exist_ok=True)
+    for old in os.listdir(tdir):  # renamed/replaced tab file
+        if old != name and old.lower().endswith(TAB_EXTS):
+            os.remove(os.path.join(tdir, old))
+    changed = _copy_if_newer(src, os.path.join(tdir, name))
+    for aext in AUDIO_EXTS:  # companion audio with the same name
+        asrc = os.path.join(os.path.dirname(src), stem + aext)
+        if os.path.isfile(asrc) and _copy_if_newer(asrc, os.path.join(tdir, stem + aext)):
+            log(f"dropbox: audio {stem}{aext} -> {tab_id}")
+    cfg_path = os.path.join(tdir, "config.json")
+    cfg = {"tab": {}, "audio": [], "youtube": []}
+    if os.path.exists(cfg_path):
+        try:
+            cfg = json.load(open(cfg_path))
+        except Exception:
+            pass
+    tab = cfg.setdefault("tab", {})
+    new = {
+        "id": tab_id,
+        "title": tab.get("title") or title,
+        "artist": tab.get("artist") or artist,
+        "filename": name,
+        "originalFilename": name,
+        "createdAt": tab.get("createdAt") or time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()),
+        "public": tab.get("public", public),
+        "fav": tab.get("fav", False),
+    }
+    if tab.get("lastAccessAt"):
+        new["lastAccessAt"] = tab["lastAccessAt"]
+    if new != tab:
+        cfg["tab"] = new
+        json.dump(cfg, open(cfg_path, "w"), indent=2, ensure_ascii=False)
+    return changed
+
+
 def import_mirror(mirror: str, tabs_dir: str, public: bool = True) -> int:
+    """<root>/<Song>.gp            -> tab db-<song>          (artist "")
+       <root>/<Band>/<Song>.gp     -> tab db-<band>-<song>   (artist Band)
+       <root>/<Band>/<Song>/*.gp   -> tab db-<band>-<song>   newest file in the folder (working versions)
+       folders named in TABRENDER_DROPBOX_IGNORE (misc, archives) are skipped."""
     changed = 0
-    for root, dirs, files in os.walk(mirror):
-        rel = os.path.relpath(root, mirror)
-        # only <root>/<Song> and <root>/<Band>/<Song>: deeper folders (misc, old versions) are skipped
-        dirs[:] = sorted(d for d in dirs if not d.startswith(".")) if rel == "." else []
-        band = "" if rel == "." else rel.split(os.sep)[0]
-        for name in sorted(files):
-            src = os.path.join(root, name)
+
+    def do(src: str, tab_id: str, title: str, artist: str) -> None:
+        nonlocal changed
+        if _write_tab(tabs_dir, tab_id, src, title, artist, public):
+            changed += 1
+            log(f"dropbox: imported {os.path.relpath(src, mirror)} -> {tab_id}")
+
+    def files(d: str):
+        return sorted(n for n in os.listdir(d) if not n.startswith(".") and n.lower().endswith(TAB_EXTS))
+
+    def subdirs(d: str):
+        return sorted(n for n in os.listdir(d) if not n.startswith(".") and os.path.isdir(os.path.join(d, n)) and n.lower() not in IGNORE_DIRS)
+
+    for name in files(mirror):
+        stem, ext = os.path.splitext(name)
+        do(os.path.join(mirror, name), ID_PREFIX + slug(stem) + ("" if ext.lower() == ".gp" else "-" + ext.lower().lstrip(".")), stem, "")
+    for band in subdirs(mirror):
+        bdir = os.path.join(mirror, band)
+        for name in files(bdir):
             stem, ext = os.path.splitext(name)
-            if name.startswith(".") or ext.lower() not in TAB_EXTS:
-                continue
-            parts = [slug(x) for x in ([] if rel == "." else rel.split(os.sep))] + [slug(stem)]
-            if ext.lower() != ".gp":
-                parts.append(ext.lower().lstrip("."))  # same song in .gp and .gpx stay separate tabs
-            tab_id = ID_PREFIX + "-".join(parts)
-            tdir = os.path.join(tabs_dir, tab_id)
-            os.makedirs(tdir, exist_ok=True)
-            for old in os.listdir(tdir):  # renamed/replaced tab file
-                if old != name and old.lower().endswith(TAB_EXTS):
-                    os.remove(os.path.join(tdir, old))
-            if _copy_if_newer(src, os.path.join(tdir, name)):
-                changed += 1
-                log(f"dropbox: imported {rel}/{name} -> {tab_id}")
-            for aext in AUDIO_EXTS:  # companion audio with the same name
-                asrc = os.path.join(root, stem + aext)
-                if os.path.isfile(asrc) and _copy_if_newer(asrc, os.path.join(tdir, stem + aext)):
-                    log(f"dropbox: audio {rel}/{stem}{aext} -> {tab_id}")
-            cfg_path = os.path.join(tdir, "config.json")
-            cfg = {"tab": {}, "audio": [], "youtube": []}
-            if os.path.exists(cfg_path):
-                try:
-                    cfg = json.load(open(cfg_path))
-                except Exception:
-                    pass
-            tab = cfg.setdefault("tab", {})
-            new = {
-                "id": tab_id,
-                "title": tab.get("title") or stem,
-                "artist": tab.get("artist") or band,
-                "filename": name,
-                "originalFilename": name,
-                "createdAt": tab.get("createdAt") or time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()),
-                "public": tab.get("public", public),
-                "fav": tab.get("fav", False),
-            }
-            if tab.get("lastAccessAt"):
-                new["lastAccessAt"] = tab["lastAccessAt"]
-            if new != tab:
-                cfg["tab"] = new
-                json.dump(cfg, open(cfg_path, "w"), indent=2, ensure_ascii=False)
+            do(os.path.join(bdir, name), ID_PREFIX + slug(band) + "-" + slug(stem) + ("" if ext.lower() == ".gp" else "-" + ext.lower().lstrip(".")), stem, band)
+        for song in subdirs(bdir):
+            newest = _newest_tab(os.path.join(bdir, song))
+            if newest:
+                do(newest, ID_PREFIX + slug(band) + "-" + slug(song), song, band)
     return changed
 
 
