@@ -6,9 +6,10 @@ services:
       - "127.0.0.1:47777:47777"
     volumes:
       - ./data:/app/data
-      # Replace bundled sonivox.sf2 (1.3 MB) with a high-quality GM bank.
-      # Swap the left side to ./soundfont/GeneralUser_GS.sf2 for a lighter (~30 MB) bank. alphaTab drops stereo samples (presets go silent/NaN), so FluidR3 is patched to mono via soundfont/sf2mono.py.
-      - ./soundfont/FluidR3_GM_mono.sf2:/app/dist/soundfont/sonivox.sf2:ro
+      # The MIDI preview uses the bundled sonivox.sf2 (1.3 MB); render.mp3 is the real audio. A bigger GM bank
+      # sounds better in the preview but every new visitor downloads it (FluidR3 is 148 MB):
+      #   - ./soundfont/FluidR3_GM_mono.sf2:/app/dist/soundfont/sonivox.sf2:ro
+      # alphaTab drops stereo samples (presets go silent/NaN), so FluidR3 is patched to mono via soundfont/sf2mono.py.
     restart: unless-stopped
 
   render:

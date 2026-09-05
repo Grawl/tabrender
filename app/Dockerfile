@@ -3,7 +3,9 @@
 #     unless the browser already remembers a choice;
 #  2. the tab list marks tabs that have a render (backend adds `hasRender`, the list shows a headphones mark);
 #  3. audio sync uses a sync point at every tempo change instead of a single one at bar 1: alphaTab keeps the
-#     cursor speed of the last sync point, so with one point the cursor drifted after every tempo change.
+#     cursor speed of the last sync point, so with one point the cursor drifted after every tempo change;
+#  4. when the audio resumes after buffering ("playing" event) the cursor is snapped back to the exact position:
+#     alphaTab only animates towards the next beat and never corrects an offset until the next staff line.
 # BASE (build arg, e.g. /band-a) re-bases the SPA under a sub-path: API base, router history base, socket.io
 # path, better-auth base, soundfont URL and index.html asset links. nginx strips the prefix (deploy/tabs.conf).
 # The build fails if the upstream code changed and an anchor is gone — re-check the patches then.
@@ -17,6 +19,9 @@ RUN set -eu; cd /app/dist/assets; f=$(ls Tab-*.js); \
     grep -q 'simpleSync(e){const t=\[{barIndex:0,barOccurence:0,barPosition:0,millisecondOffset:e}\];this.api.score.applyFlatSyncPoints(t)}' "$f"; \
     sed -i 's#simpleSync(e){const t=\[{barIndex:0,barOccurence:0,barPosition:0,millisecondOffset:e}\];this.api.score.applyFlatSyncPoints(t)}#simpleSync(e){const S=this.api.score,G=R.midi.MidiFileGenerator.generateSyncPoints(S,!0),t=[];for(let i=0;i<G.length;i++){const p=G[i],mb=S.masterBars[p.masterBarIndex];let r=0;if(i===G.length-1)r=1;else if(i>0){const a=(mb.tempoAutomations||[]).find(x=>x.value===p.synthBpm);r=a?a.ratioPosition:0}t.push({barIndex:p.masterBarIndex,barOccurence:Math.max(0,p.masterBarOccurence),barPosition:r,millisecondOffset:p.synthTime+e})}S.applyFlatSyncPoints(t);this.api.updateSyncPoints()}#' "$f"; \
     grep -q 'generateSyncPoints' "$f"; \
+    grep -q 't.addEventListener("timeupdate",l),t.addEventListener("seeked",l)' "$f"; \
+    sed -i 's#t.addEventListener("timeupdate",l),t.addEventListener("seeked",l)#t.addEventListener("timeupdate",l),t.addEventListener("seeked",l),t.addEventListener("playing",()=>{const a=this.api;if(a\&\&a._cursorUpdateTick){a._isInitialBeatCursorUpdate=!0;a._cursorUpdateTick(a.tickPosition,!1,1,!1,!0)}})#' "$f"; \
+    grep -q '_isInitialBeatCursorUpdate=!0' "$f"; \
     rm -f "$f.gz"; gzip -k -9 "$f"; chown deno:deno "$f" "$f.gz"; \
     i=$(ls index-*.js); \
     grep -q 'y("div",bC,_e(e.tab.title),1)' "$i"; \

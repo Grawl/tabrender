@@ -92,6 +92,12 @@ def render(gp_path: str, out_mp3: str, config: dict | None = None) -> dict:
         group_names: dict[str, list[str]] = {"drums": [], "bass": [], "other": []}
         kits: dict[str, GuitarKit] = {}
         chains: dict[str, AmpChain] = {}
+        stem_dir = os.environ.get("TABRENDER_STEM_DIR")  # debugging: dump every stem as it goes into the mix
+
+        def dump_stem(name: str, stem: np.ndarray) -> None:
+            if stem_dir:
+                os.makedirs(stem_dir, exist_ok=True)
+                sf.write(os.path.join(stem_dir, f"{name}.wav"), stem, SR)
 
         for t in meta["tracks"]:
             prog, chans = t["program"], {t["primaryChannel"], t["secondaryChannel"]}
@@ -137,17 +143,18 @@ def render(gp_path: str, out_mp3: str, config: dict | None = None) -> dict:
                     # spread the two takes around the track's own balance
                     w = cfg["double_width"] * 8
                     balance = t["balance"] + (-w if take == 0 else w)
-                    mix += _pan(wet * cfg["level_guitar"] * vol, min(16, max(0, balance)))
+                    part = _pan(wet * cfg["level_guitar"] * vol, min(16, max(0, balance)))
                 else:
-                    mix += _pan(wet * cfg["level_guitar"] * vol, t["balance"])
+                    part = _pan(wet * cfg["level_guitar"] * vol, t["balance"])
+                dump_stem(f"guitar{t['index']}_take{take}", part)
+                mix += part
 
-        def add_stem(stem: np.ndarray, level: float) -> None:
+        def add_stem(stem: np.ndarray, level: float, name: str = "stem") -> None:
             n = min(len(stem), n_samples)
             peak = float(np.abs(stem).max()) + 1e-9
-            if stem.ndim == 1:
-                mix[:n] += (stem[:n] / peak * level)[:, None]
-            else:
-                mix[:n] += stem[:n] / peak * level
+            part = (stem[:n] / peak * level)[:, None] if stem.ndim == 1 else stem[:n] / peak * level
+            dump_stem(name, part)
+            mix[:n] += part
 
         for g, chans in groups.items():
             if not chans:
@@ -160,7 +167,7 @@ def render(gp_path: str, out_mp3: str, config: dict | None = None) -> dict:
                     for dch in dchans:
                         for n in dch.notes:
                             n.velocity = min(127, n.velocity + cfg["drum_velocity_boost"])
-                    add_stem(DrumKit(kit_path).render(dchans, SR, length), cfg["level_drums"])
+                    add_stem(DrumKit(kit_path).render(dchans, SR, length), cfg["level_drums"], "drums")
                 else:
                     add_stem(
                         fluid.render(midi_path, chans, SOUNDFONT, SR, exclude_notes=KICK_NOTES), cfg["level_drums"]
@@ -170,12 +177,12 @@ def render(gp_path: str, out_mp3: str, config: dict | None = None) -> dict:
                         add_stem(kick, cfg["level_kick"])
                 hits = [n.start for c in chans if c in channels for n in channels[c].notes if n.pitch in KICK_NOTES]
                 if hits:
-                    add_stem(synth_kick(hits, n_samples, SR), cfg["level_kick_synth"])
+                    add_stem(synth_kick(hits, n_samples, SR), cfg["level_kick_synth"], "kick_synth")
             elif g == "bass":
                 di = fluid.render(midi_path, chans, SOUNDFONT, SR, legato=True, program=cfg["bass_program"])
-                add_stem(bass.process(di, SR, drive=cfg["bass_drive"]), cfg["level_bass"])
+                add_stem(bass.process(di, SR, drive=cfg["bass_drive"]), cfg["level_bass"], "bass")
             else:
-                add_stem(fluid.render(midi_path, chans, SOUNDFONT, SR), cfg["level_" + g])
+                add_stem(fluid.render(midi_path, chans, SOUNDFONT, SR), cfg["level_" + g], g)
 
         mix = limiter(mix, SR)
 
