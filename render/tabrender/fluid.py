@@ -75,10 +75,11 @@ def _legato(events: list[tuple[int, int, mido.Message]], overlap: int, max_exten
                 nxt = next((s for s in ons.get(m.channel, []) if s > start), None)
                 if nxt is not None:
                     t = max(t, min(nxt + overlap, t + max_extend))
-                # never past the next hit of the same key: a late note-off would silence that note instead
+                # a repeated note: drop this note-off, the next note-on on the same key makes FluidSynth
+                # release the old voice under the new attack (a note-off just before it leaves an audible gap)
                 same = next((s for s in ons.get((m.channel, m.note), []) if s > start), None)
-                if same is not None:
-                    t = min(t, same - 1)
+                if same is not None and same <= t:
+                    continue
         out.append((t, order, m))
     return out
 

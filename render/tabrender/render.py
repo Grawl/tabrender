@@ -47,9 +47,9 @@ CONFIG = {
     "level_kick_synth": 0.5,  # synthetic sub/click layered under every kick hit
     "drumkit": "drums/ALL.sfz",  # Salamander Drumkit (SFZ); falls back to FluidSynth if missing
     "drum_velocity_boost": 25,  # GP dynamics land around 79; push into the kit's hard-hit layers
-    "level_bass": 0.6,
-    "bass_program": 34,  # every bass track plays FluidR3 "Electric Bass (pick)" before the bass chain
-    "bass_drive": 6.0,  # split-band drive on the bass (see bass.py)
+    "level_bass": 0.4,
+    "bass_program": 33,  # every bass track plays FluidR3 "Electric Bass (finger)": the pick preset has no sustain, notes stay detached
+    "bass_drive": 3.0,  # split-band drive on the bass (see bass.py)
     "max_seconds": 0,  # >0: render only the first N seconds (previews)
     "level_other": 0.6,
 }

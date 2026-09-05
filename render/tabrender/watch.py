@@ -16,7 +16,7 @@ from .render import log, render
 TAB_EXTS = (".gp", ".gpx", ".gp3", ".gp4", ".gp5", ".musicxml", ".xml", ".capx")
 OUT_NAME = os.environ.get("TABRENDER_OUT_NAME", "render.mp3")
 STATE_NAME = ".render.json"
-VERSION = 15  # bump to force re-render after pipeline changes
+VERSION = 16  # bump to force re-render after pipeline changes
 
 
 def _save(path: str, obj: dict) -> None:
