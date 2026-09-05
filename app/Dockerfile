@@ -25,7 +25,7 @@ RUN set -eu; cd /app/dist/assets; f=$(ls Tab-*.js); \
       grep -q 'function sC(){return""}' "$i"; sed -i "s#function sC(){return\"\"}#function sC(){return\"$BASE\"}#" "$i"; \
       grep -q 'history:rk()' "$i"; sed -i "s#history:rk()#history:rk(\"$BASE\")#" "$i"; \
       grep -q 'zo(He,{query:{clientType:"tabPlayer"}' "$i"; sed -i 's#zo(He,{query:{clientType:"tabPlayer"}#zo("",{path:He+"/socket.io",query:{clientType:"tabPlayer"}#' "$i"; \
-      grep -q 'eE({baseURL:He})' "$i"; sed -i 's#eE({baseURL:He})#eE({baseURL:location.origin+He})#' "$i"; \
+      grep -q 'eE({baseURL:He})' "$i"; sed -i 's#eE({baseURL:He})#eE({baseURL:location.origin+He+"/api/auth"})#' "$i"; \
       ! grep -q 'fetch("/api' "$i"; ! grep -q 'fetch(`/api' "$i"; \
       grep -q 'soundFont:"/soundfont/sonivox.sf2"' "$f"; sed -i 's#soundFont:"/soundfont/sonivox.sf2"#soundFont:Se+"/soundfont/sonivox.sf2"#' "$f"; \
       h=/app/dist/index.html; \
