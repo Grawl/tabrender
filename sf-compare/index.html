@@ -1,0 +1,42 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>SoundFont A/B</title>
+<style>
+body{margin:0;font:14px system-ui;background:#1b1b1b;color:#ddd}
+#bar{position:sticky;top:0;background:#111;padding:10px 14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;border-bottom:1px solid #333}
+select,button{font:inherit;padding:4px 8px;background:#2a2a2a;color:#ddd;border:1px solid #555;border-radius:4px}
+button{cursor:pointer}#status{color:#9c9;min-width:220px}#tracks label{margin-right:10px}
+#at{background:#fff;color:#000;padding:10px}
+</style></head><body>
+<div id="bar">
+ <label>Tab <select id="tab"><option value="tabs/tombstone.gp">Tombstone (8-string)</option><option value="tabs/hare-no-hi.gp">Hare no Hi ni</option></select></label>
+ <label>SoundFont <select id="sf"></select></label>
+ <button id="play">▶ Play</button><button id="stop">■ Stop</button>
+ <label>Vol <input id="vol" type="range" min="0" max="2" step="0.05" value="1"></label>
+ <span id="status">…</span>
+ <span id="tracks"></span>
+</div>
+<div id="at"></div>
+<script>
+(()=>{const oc=AudioNode.prototype.connect;AudioNode.prototype.connect=function(d,...a){if(d instanceof AudioDestinationNode){const an=this.context.createAnalyser();an.fftSize=2048;window.__an=an;window.__ctx=this.context;oc.call(this,an);return oc.call(an,d,...a)}return oc.call(this,d,...a)}})();
+window.peak=async(ms=2000)=>{let p=0;const t=Date.now();const b=new Float32Array(2048);while(Date.now()-t<ms){if(window.__an){__an.getFloatTimeDomainData(b);for(const v of b)p=Math.max(p,Math.abs(v))}await new Promise(r=>setTimeout(r,50))}return {peak:p,ctx:window.__ctx&&__ctx.state}};
+</script>
+<script src="alphatab/alphaTab.min.js"></script>
+<script>
+const SFS=[['sonivox (default)','sf/sonivox.sf2'],['GeneralUser GS','sf/GeneralUser_GS.sf2'],['FluidR3 GM (mono patch)','sf/FluidR3_GM_mono.sf2'],['FluidR3 GM (original, broken)','sf/FluidR3_GM.sf2']];
+const $=id=>document.getElementById(id); const st=m=>$('status').textContent=m;
+for(const [n,u] of SFS){const o=document.createElement('option');o.value=u;o.textContent=n;$('sf').append(o)}
+const q=new URLSearchParams(location.search); if(q.get('sf'))$('sf').value=q.get('sf'); if(q.get('tab'))$('tab').value=q.get('tab');
+let api;
+function init(){
+ if(api) api.destroy();
+ api=new alphaTab.AlphaTabApi($('at'),{file:$('tab').value,player:{enablePlayer:true,enableCursor:true,soundFont:$('sf').value}});
+ st('loading '+$('sf').selectedOptions[0].textContent+' …');
+ api.soundFontLoad.on(e=>{ if(e.total) st('soundfont '+Math.round(e.loaded/1048576)+' / '+Math.round(e.total/1048576)+' MB') });
+ api.soundFontLoaded.on(()=>st('soundfont loaded'));
+ api.playerReady.on(()=>st('ready: '+$('sf').selectedOptions[0].textContent));
+ api.error.on(e=>st('ERROR '+(e.message||e)));
+ api.scoreLoaded.on(s=>{ if(q.get('solo')!==null){const t=s.tracks[+q.get('solo')]; api.changeTrackSolo([t],true)} $('tracks').innerHTML=''; s.tracks.forEach(t=>{const l=document.createElement('label');const c=document.createElement('input');c.type='checkbox';c.checked=true;c.onchange=()=>api.changeTrackMute([t],!c.checked);l.append(c,' '+t.name);$('tracks').append(l)}) });
+}
+$('sf').onchange=$('tab').onchange=()=>{history.replaceState(null,'','?sf='+encodeURIComponent($('sf').value)+'&tab='+encodeURIComponent($('tab').value));init()};
+$('play').onclick=()=>api.playPause(); $('stop').onclick=()=>api.stop(); $('vol').oninput=e=>api.masterVolume=+e.target.value;
+init();
+</script></body></html>

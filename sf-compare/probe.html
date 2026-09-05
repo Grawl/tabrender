@@ -1,0 +1,26 @@
+<!doctype html><html><head><meta charset="utf-8"><title>probe</title></head><body style="background:#222;color:#ddd;font:14px monospace">
+<div id="result">loading…</div><div id="at"></div>
+<script>
+(()=>{const oc=AudioNode.prototype.connect;AudioNode.prototype.connect=function(d,...a){if(d instanceof AudioDestinationNode){const an=this.context.createAnalyser();an.fftSize=2048;window.__an=an;oc.call(this,an);return oc.call(an,d,...a)}return oc.call(this,d,...a)}})();
+window.peak=async(ms)=>{let p=0,nan=0;const t=Date.now();const b=new Float32Array(2048);while(Date.now()-t<ms){if(window.__an){__an.getFloatTimeDomainData(b);for(const v of b){if(Number.isNaN(v))nan++;else p=Math.max(p,Math.abs(v))}}await new Promise(r=>setTimeout(r,50))}return {peak:p,nan}};
+</script>
+<script src="alphatab/alphaTab.min.js"></script>
+<script>
+const q=new URLSearchParams(location.search); const sf=q.get('sf'); const only=q.get('only'); const strip=q.get('strip');
+const R=document.getElementById('result'); const log=m=>R.textContent+=' | '+m;
+const api=new alphaTab.AlphaTabApi(document.getElementById('at'),{player:{enablePlayer:true,soundFont:sf}});
+api.error.on(e=>log('ERR '+(e.message||e)));
+(async()=>{
+  const buf=await (await fetch(q.get('tab')||'tabs/tombstone.gp')).arrayBuffer();
+  const sc=alphaTab.importer.ScoreLoader.loadScoreFromBytes(new Uint8Array(buf), api.settings);
+  if(only!==null){ const keep=sc.tracks[+only]; sc.tracks.length=0; sc.tracks.push(keep); keep.index=0; }
+  if(strip){ for(const t of sc.tracks) for(const s of t.staves) for(const b of s.bars) for(const v of b.voices) for(const bt of v.beats){ bt.dynamics=alphaTab.model.DynamicValue.F; bt.fade=0; bt.tremoloSpeed=null; for(const n of bt.notes){ n.isPalmMute=false; n.bendPoints=null; n.bendType=0; n.isGhost=false; n.isDead=false; n.vibrato=0; n.isLetRing=false; } } }
+  window.__sc=sc; api.renderScore(sc);
+  await new Promise(r=>api.playerReady.on(()=>r()));
+  R.textContent='READY tracks='+sc.tracks.map(t=>t.name).join(',')+' — click to play';
+  await new Promise(r=>document.addEventListener('click',()=>r(),{once:true}));
+  api.play(); await new Promise(r=>setTimeout(r,1000));
+  const r=await peak(3000);
+  R.textContent='RESULT only='+only+' strip='+strip+' peak='+r.peak.toFixed(3)+' nan='+r.nan+' state='+api.playerState+' pos='+api.tickPosition;
+})();
+</script></body></html>

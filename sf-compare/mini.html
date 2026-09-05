@@ -1,0 +1,20 @@
+<!doctype html><html><body>
+<div id="log" style="font:12px monospace;white-space:pre"></div>
+<div id="at" data-tex="true"></div>
+<script>
+(()=>{const oc=AudioNode.prototype.connect;AudioNode.prototype.connect=function(d,...a){if(d instanceof AudioDestinationNode){const an=this.context.createAnalyser();an.fftSize=2048;window.__an=an;window.__ctx=this.context;oc.call(this,an);return oc.call(an,d,...a)}return oc.call(this,d,...a)}})();
+window.peak=async(ms=2000)=>{let p=0;const t=Date.now();const b=new Float32Array(2048);while(Date.now()-t<ms){if(window.__an){__an.getFloatTimeDomainData(b);for(const v of b)p=Math.max(p,Math.abs(v))}await new Promise(r=>setTimeout(r,50))}return {peak:p,ctx:window.__ctx&&__ctx.state}};
+</script>
+<script src="alphatab/alphaTab.min.js"></script>
+<script>
+const q=new URLSearchParams(location.search); document.getElementById('at').textContent=q.get('tex')||'\\track "G" \\instrument 30 0.4.4 1.3 2.3 3.3 | 5.4.4 6.4 7.4 8.4'; const sf=q.get('sf')||'sf/FluidR3_GM.sf2';
+const log=m=>{document.getElementById('log').textContent+=m+'\n';console.log('[SFTEST] '+m)};
+log('soundfont: '+sf);
+const api=new alphaTab.AlphaTabApi(document.getElementById('at'),{player:{enablePlayer:true,soundFont:sf}});
+api.soundFontLoad.on(e=>{ if(e.total && e.loaded===e.total) log('sf download complete '+e.loaded) });
+api.soundFontLoaded.on(()=>log('soundFontLoaded OK'));
+api.error.on(e=>log('ERROR '+(e&&e.message||e)));
+api.playerReady.on(()=>log('playerReady'));
+api.playerStateChanged.on(e=>log('state '+e.state));
+window.addEventListener('error',e=>log('window error '+e.message));
+</script></body></html>

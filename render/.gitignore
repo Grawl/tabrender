@@ -1,0 +1,5 @@
+assets/
+out/
+node_modules/
+__pycache__/
+.tone3000-key
