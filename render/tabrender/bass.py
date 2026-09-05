@@ -14,8 +14,9 @@ def _sos(kind: str, freq: float, sr: int, order: int = 2):
 def compress(
     x: np.ndarray, sr: int, threshold_db: float = -18.0, ratio: float = 4.0, attack: float = 0.02, release: float = 0.1
 ) -> np.ndarray:
-    """Vectorised feed-forward compressor: peak envelope over the attack window, one-pole release."""
-    env = maximum_filter1d(np.abs(x), size=max(1, int(attack * sr)))
+    """Vectorised feed-forward compressor: causal peak envelope over the attack window, one-pole release."""
+    n = max(1, int(attack * sr))
+    env = maximum_filter1d(np.abs(x), size=n, origin=n - 1 - n // 2)  # window ends at the current sample
     r = np.exp(-1.0 / (release * sr))
     env = lfilter([1 - r], [1, -r], env).astype(np.float32)
     thr = 10 ** (threshold_db / 20)

@@ -59,10 +59,11 @@ def _legato(events: list[tuple[int, int, mido.Message]], overlap: int, max_exten
     def is_off(m):
         return m.type == "note_off" or (m.type == "note_on" and m.velocity == 0)
 
-    ons: dict[int, list[int]] = {}
+    ons: dict = {}  # channel -> note-on ticks; (channel, note) -> note-on ticks
     for t, _, m in events:
         if is_on(m):
             ons.setdefault(m.channel, []).append(t)
+            ons.setdefault((m.channel, m.note), []).append(t)
     out = []
     open_notes: dict[tuple[int, int], int] = {}
     for t, order, m in events:
@@ -74,6 +75,10 @@ def _legato(events: list[tuple[int, int, mido.Message]], overlap: int, max_exten
                 nxt = next((s for s in ons.get(m.channel, []) if s > start), None)
                 if nxt is not None:
                     t = max(t, min(nxt + overlap, t + max_extend))
+                # never past the next hit of the same key: a late note-off would silence that note instead
+                same = next((s for s in ons.get((m.channel, m.note), []) if s > start), None)
+                if same is not None:
+                    t = min(t, same - 1)
         out.append((t, order, m))
     return out
 
