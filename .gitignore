@@ -4,7 +4,7 @@ data/
 soundfont/*.sf2
 render/assets/
 render/out/
-render/node_modules/
+render/node_modules
 render/.tone3000-key
 rclone/
 # diagnostic page: vendored alphaTab build and private tabs
