@@ -10,7 +10,8 @@ from .sfz import Region
 
 # GM percussion note -> (Salamander key, semitones). The kit is not GM-mapped above the hi-hat:
 # 47 is a cowbell, 48-51 the second ride, 52 the main ride, 55 crash 1, 59/60 chinas, 63 the splash.
-# It has two toms (43 floor, 45 rack), the other GM toms are those two resampled up or down.
+# It has two toms (43 floor, 45 rack); GM's six toms are spread over them with resampling so that
+# neighbouring GM toms never share one sample (a two-tom roll on one sample flanges).
 GM_TO_KIT = {
     35: (35, 0),
     36: (36, 0),
@@ -22,12 +23,12 @@ GM_TO_KIT = {
     42: (42, 0),
     43: (43, 0),  # high floor tom
     44: (44, 0),
-    45: (45, 0),  # low tom
+    45: (43, 3),  # low tom (floor tom pitched up: GP charts pair 45 with 47, keep them on different drums)
     46: (46, 0),
-    47: (45, 2),  # low-mid tom
-    48: (45, 3),  # hi-mid tom
+    47: (45, 0),  # low-mid tom
+    48: (45, 2),  # hi-mid tom
     49: (55, 0),  # crash 1
-    50: (45, 5),  # high tom
+    50: (45, 4),  # high tom
     51: (52, 0),  # ride 1
     52: (60, 0),  # china
     53: (53, 0),  # ride bell
