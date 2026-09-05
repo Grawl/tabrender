@@ -10,6 +10,7 @@ import time
 import traceback
 
 from .dropbox_import import sync_and_import
+from .publish import publish
 from .render import log, render
 
 TAB_EXTS = (".gp", ".gpx", ".gp3", ".gp4", ".gp5", ".musicxml", ".xml", ".capx")
@@ -93,7 +94,9 @@ def main() -> None:
     while True:
         try:
             sync_and_import(tabs_dir)
+            publish(tabs_dir)  # before rendering: new tabs reach the band instances right away
             scan_once(tabs_dir)
+            publish(tabs_dir)  # after: fresh render.mp3 files
         except Exception:
             traceback.print_exc()
         time.sleep(interval)
