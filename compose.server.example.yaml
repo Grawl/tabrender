@@ -2,6 +2,11 @@
 # docker compose -f compose.yaml -f compose.server.yaml up -d --build
 services:
   app:
+    build:
+      context: ./app
+      args:
+        ANALYTICS_SRC: https://stats.example.com/script.js
+        ANALYTICS_ID: <umami website id>
     networks:
       - default
       - proxy
@@ -24,6 +29,8 @@ services:
       context: ./app
       args:
         BASE: /band-a
+        ANALYTICS_SRC: https://stats.example.com/script.js
+        ANALYTICS_ID: <umami website id>
     container_name: its-mytabs-band-a
     ports:
       - "127.0.0.1:47778:47777"
@@ -39,6 +46,8 @@ services:
       context: ./app
       args:
         BASE: /band-b
+        ANALYTICS_SRC: https://stats.example.com/script.js
+        ANALYTICS_ID: <umami website id>
     container_name: its-mytabs-band-b
     ports:
       - "127.0.0.1:47779:47777"

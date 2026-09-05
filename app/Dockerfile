@@ -5,12 +5,17 @@
 #  3. audio sync uses a sync point at every tempo change instead of a single one at bar 1: alphaTab keeps the
 #     cursor speed of the last sync point, so with one point the cursor drifted after every tempo change;
 #  4. when the audio resumes after buffering ("playing" event) the cursor is snapped back to the exact position:
-#     alphaTab only animates towards the next beat and never corrects an offset until the next staff line.
+#     alphaTab only animates towards the next beat and never corrects an offset until the next staff line;
+#  5. an optional analytics tracker tag in index.html (ANALYTICS_SRC / ANALYTICS_ID build args).
 # BASE (build arg, e.g. /band-a) re-bases the SPA under a sub-path: API base, router history base, socket.io
 # path, better-auth base, soundfont URL and index.html asset links. nginx strips the prefix (deploy/tabs.conf).
 # The build fails if the upstream code changed and an anchor is gone — re-check the patches then.
 FROM louislam/its-mytabs:1@sha256:2e478d3170bdbec11c9c3a6ff58fd5a2ba80c119fd78fe4b0e9f4f475b6356f8
 ARG BASE=""
+# Optional analytics: ANALYTICS_SRC is the tracker script URL, ANALYTICS_ID its site id (Umami-style
+# data-website-id). Both empty = no tracker.
+ARG ANALYTICS_SRC=""
+ARG ANALYTICS_ID=""
 USER root
 RUN set -eu; cd /app/dist/assets; f=$(ls Tab-*.js); \
     grep -q 'this.currentAudio=this.getConfig("audio","synth")' "$f"; \
@@ -42,4 +47,9 @@ RUN set -eu; cd /app/dist/assets; f=$(ls Tab-*.js); \
       sed -i "s#src=\"/assets/#src=\"$BASE/assets/#g; s#href=\"/assets/#href=\"$BASE/assets/#g; s#href=\"/favicon.ico\"#href=\"$BASE/favicon.ico\"#; s#<head>#<head><script>window.__BASE=\"$BASE\"</script>#" "$h"; \
       grep -q "$BASE/assets/" "$h"; \
       for x in "$f" "$i"; do rm -f "$x.gz"; gzip -k -9 "$x"; chown deno:deno "$x" "$x.gz"; done; \
+    fi; \
+    if [ -n "$ANALYTICS_ID" ]; then \
+      h=/app/dist/index.html; \
+      sed -i "s#</head>#<script defer src=\"$ANALYTICS_SRC\" data-website-id=\"$ANALYTICS_ID\"></script></head>#" "$h"; \
+      grep -q "$ANALYTICS_ID" "$h"; \
     fi
