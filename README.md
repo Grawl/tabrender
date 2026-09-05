@@ -1,8 +1,14 @@
-# tabs
+# tabrender
 
 Self-hosted Guitar Pro player for sharing tabs with the bands: [It's MyTabs](https://github.com/louislam/its-mytabs)
 plus a renderer that turns every tab into an MP3 with sampled guitars, amp captures and a real drum kit
 (see [render/README.md](render/README.md)). Tabs arrive from a Dropbox folder.
+
+The renderer is the interesting part: alphaTab exports the score to MIDI plus per-note articulations (palm mute,
+dead notes, bends); a small numpy SFZ sampler plays DI guitar samples with those articulations, double-tracked;
+[Neural Amp Modeler](https://github.com/sdatkinson/neural-amp-modeler) captures give the amp tone; drums go through
+the same sampler with a GM-to-kit map; bass gets a split-band drive. No DAW, no plugins, everything open source and
+headless. The player is patched so the cursor follows the MP3 exactly even across tempo changes.
 
 - `compose.yaml` — player + renderer; `compose.server.yaml` adds the reverse-proxy network for tabs.example.com.
 - `deploy/tabs.conf` — nginx vhost for the jonasal/nginx-certbot container on the home server.
@@ -29,3 +35,8 @@ plus a renderer that turns every tab into an MP3 with sampled guitars, amp captu
 `npm install` brings oxlint, oxfmt, markdownlint-cli2 and prek; ruff comes from `brew install ruff` or
 `pip install ruff`. `npx prek install` enables the pre-commit hooks; `npm run lint` runs everything, `npm run format`
 fixes what can be fixed. GitLab CI runs the same checks in the `lint` stage.
+
+## License
+
+MIT for the code in this repository. The sample libraries, amp captures and soundfonts it downloads have their
+own licenses (see the download scripts).
