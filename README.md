@@ -10,8 +10,10 @@ dead notes, bends); a small numpy SFZ sampler plays DI guitar samples with those
 the same sampler with a GM-to-kit map; bass gets a split-band drive. No DAW, no plugins, everything open source and
 headless. The player is patched so the cursor follows the MP3 exactly even across tempo changes.
 
-- `compose.yaml` — player + renderer; `compose.server.yaml` adds the reverse-proxy network for tabs.example.com.
-- `deploy/tabs.conf` — nginx vhost for the jonasal/nginx-certbot container on the home server.
+- `compose.yaml` — player + renderer; `compose.server.example.yaml` is the server overlay (reverse-proxy network,
+  read-only per-band instances): copy it to `compose.server.yaml` (gitignored) and fill in your domain, band names
+  and Dropbox folder.
+- `deploy/tabs.example.conf` — nginx vhost for the jonasal/nginx-certbot container; the real `deploy/tabs.conf` is gitignored.
 - `soundfont/` — GM soundfont for the in-browser MIDI preview; `sf2mono.py` patches stereo samples to mono because
   alphaTab's synth drops them (presets go silent).
 - `sf-compare/` — local A/B page for soundfonts (diagnostic).

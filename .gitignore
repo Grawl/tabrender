@@ -15,3 +15,7 @@ __pycache__/
 *.pyc
 .DS_Store
 node_modules/
+# personal server config (domain, band names, Dropbox folder); commit the *.example.* versions
+compose.server.yaml
+deploy/tabs.conf
+work/

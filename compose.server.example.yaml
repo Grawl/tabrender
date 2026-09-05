@@ -1,0 +1,57 @@
+# Server overlay: attach the player to the proxy-web nginx network (TLS terminated by jonasal/nginx-certbot).
+# docker compose -f compose.yaml -f compose.server.yaml up -d --build
+services:
+  app:
+    networks:
+      - default
+      - proxy
+  render:
+    # same uid as the its-mytabs process, so imported tabs and renders stay writable for the player
+    user: "1993:1993"
+    volumes:
+      - ./bands:/bands
+    environment:
+      # read-only per-band instances (see app-band-a / app-band-b below)
+      TABRENDER_PUBLISH: "band-a=Band A:/bands/band-a/tabs;band-b=Band B:/bands/band-b/tabs"
+      OMP_NUM_THREADS: 3
+      TABRENDER_SOUNDFONT: /soundfont/FluidR3_GM_mono.sf2
+      TABRENDER_DROPBOX_REMOTE: "dropbox:Tabs/public"
+
+  # Read-only band instances under tabs.example.com/band-a and /band-b: own account each, only that band's tabs
+  # (copied by the renderer's publish step); nginx (deploy/tabs.conf) rejects every mutating API call except login.
+  app-band-a:
+    build:
+      context: ./app
+      args:
+        BASE: /band-a
+    container_name: its-mytabs-band-a
+    ports:
+      - "127.0.0.1:47778:47777"
+    volumes:
+      - ./bands/band-a:/app/data
+      - ./soundfont/sonivox.sf2:/app/dist/soundfont/sonivox.sf2:ro
+    networks:
+      - default
+      - proxy
+    restart: unless-stopped
+  app-band-b:
+    build:
+      context: ./app
+      args:
+        BASE: /band-b
+    container_name: its-mytabs-band-b
+    ports:
+      - "127.0.0.1:47779:47777"
+    volumes:
+      - ./bands/band-b:/app/data
+      - ./soundfont/sonivox.sf2:/app/dist/soundfont/sonivox.sf2:ro
+    networks:
+      - default
+      - proxy
+    restart: unless-stopped
+
+networks:
+  default: {}
+  proxy:
+    external: true
+    name: proxy_default
