@@ -50,7 +50,8 @@ CONFIG = {
     "level_bass": 0.6,
     "bass_program": 34,  # every bass track plays FluidR3 "Electric Bass (pick)" before the bass chain
     "bass_drive": 6.0,  # split-band drive on the bass (see bass.py)
-    "level_other": 0.3,
+    "max_seconds": 0,  # >0: render only the first N seconds (previews)
+    "level_other": 0.6,
 }
 
 
@@ -81,6 +82,9 @@ def render(gp_path: str, out_mp3: str, config: dict | None = None) -> dict:
         with open(meta_path) as fh:
             meta = json.load(fh)
         channels = midi_events.parse(midi_path)
+        if cfg.get("max_seconds"):  # quick previews while tuning: render only the first N seconds
+            for ch in channels.values():
+                ch.notes = [n for n in ch.notes if n.start < cfg["max_seconds"]]
         length = max((n.end for ch in channels.values() for n in ch.notes), default=1.0) + 3.0
         n_samples = int(length * SR)
         mix = np.zeros((n_samples, 2), dtype=np.float32)
@@ -207,4 +211,5 @@ def render(gp_path: str, out_mp3: str, config: dict | None = None) -> dict:
 
 
 if __name__ == "__main__":
-    render(sys.argv[1], sys.argv[2])
+    # python -m tabrender.render in.gp out.mp3 ['{"level_guitar": 0, "max_seconds": 20}']
+    render(sys.argv[1], sys.argv[2], json.loads(sys.argv[3]) if len(sys.argv) > 3 else None)

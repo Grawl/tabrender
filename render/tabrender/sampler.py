@@ -155,6 +155,8 @@ def render_notes(
         vel = 1.0 - veltrack * (1.0 - note.velocity / 127.0)
         gain = 10 ** (region.f("volume", 0) / 20.0) * vel
         end = min(start + n, len(out))
+        if end <= start:
+            continue
         e = env[: end - start]
         out[start:end] += seg[: end - start] * (e[:, None] if stereo else e) * gain
     return out
