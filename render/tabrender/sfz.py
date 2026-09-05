@@ -1,5 +1,7 @@
 """Minimal SFZ parser: regions with inherited <global>/<master>/<group> opcodes."""
+
 from __future__ import annotations
+
 import os
 import re
 

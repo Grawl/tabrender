@@ -7,7 +7,10 @@ An .mp3/.ogg next to the tab with the same name is copied along as audio.
 The tab id is derived from the path, so re-syncs update the same tab; It's MyTabs auto-creates
 config.json for unknown folders, but we write it ourselves to set title/artist/public.
 """
+
 from __future__ import annotations
+
+import contextlib
 import json
 import os
 import re
@@ -15,6 +18,7 @@ import shutil
 import subprocess
 import time
 import unicodedata
+
 from .render import log
 
 TAB_EXTS = (".gp", ".gpx", ".gp3", ".gp4", ".gp5", ".musicxml", ".capx")
@@ -30,7 +34,19 @@ def slug(s: str) -> str:
 
 
 def rclone_sync(remote: str, mirror: str, config: str) -> bool:
-    cmd = ["rclone", "sync", remote, mirror, "--config", config, "--fast-list", "--exclude", ".*/**", "--exclude", "*.tmp"]
+    cmd = [
+        "rclone",
+        "sync",
+        remote,
+        mirror,
+        "--config",
+        config,
+        "--fast-list",
+        "--exclude",
+        ".*/**",
+        "--exclude",
+        "*.tmp",
+    ]
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode != 0:
         log("rclone sync failed:", r.stderr.strip()[-400:])
@@ -39,13 +55,19 @@ def rclone_sync(remote: str, mirror: str, config: str) -> bool:
 
 
 def _copy_if_newer(src: str, dst: str) -> bool:
-    if os.path.exists(dst) and os.path.getsize(dst) == os.path.getsize(src) and int(os.path.getmtime(src)) <= int(os.path.getmtime(dst)):
+    if (
+        os.path.exists(dst)
+        and os.path.getsize(dst) == os.path.getsize(src)
+        and int(os.path.getmtime(src)) <= int(os.path.getmtime(dst))
+    ):
         return False
     shutil.copy2(src, dst)
     return True
 
 
-IGNORE_DIRS = tuple(x.strip().lower() for x in os.environ.get("TABRENDER_DROPBOX_IGNORE", "misc,хранилище табов,old,archive").split(","))
+IGNORE_DIRS = tuple(
+    x.strip().lower() for x in os.environ.get("TABRENDER_DROPBOX_IGNORE", "misc,хранилище табов,old,archive").split(",")
+)
 
 
 def _newest_tab(d: str) -> str | None:
@@ -70,10 +92,8 @@ def _write_tab(tabs_dir: str, tab_id: str, src: str, title: str, artist: str, pu
     cfg_path = os.path.join(tdir, "config.json")
     cfg = {"tab": {}, "audio": [], "youtube": []}
     if os.path.exists(cfg_path):
-        try:
-            cfg = json.load(open(cfg_path))
-        except Exception:
-            pass
+        with contextlib.suppress(Exception), open(cfg_path) as fh:
+            cfg = json.load(fh)
     tab = cfg.setdefault("tab", {})
     new = {
         "id": tab_id,
@@ -89,15 +109,16 @@ def _write_tab(tabs_dir: str, tab_id: str, src: str, title: str, artist: str, pu
         new["lastAccessAt"] = tab["lastAccessAt"]
     if new != tab:
         cfg["tab"] = new
-        json.dump(cfg, open(cfg_path, "w"), indent=2, ensure_ascii=False)
+        with open(cfg_path, "w") as fh:
+            json.dump(cfg, fh, indent=2, ensure_ascii=False)
     return changed
 
 
 def import_mirror(mirror: str, tabs_dir: str, public: bool = True) -> int:
     """<root>/<Song>.gp            -> tab db-<song>          (artist "")
-       <root>/<Band>/<Song>.gp     -> tab db-<band>-<song>   (artist Band)
-       <root>/<Band>/<Song>/*.gp   -> tab db-<band>-<song>   newest file in the folder (working versions)
-       folders named in TABRENDER_DROPBOX_IGNORE (misc, archives) are skipped."""
+    <root>/<Band>/<Song>.gp     -> tab db-<band>-<song>   (artist Band)
+    <root>/<Band>/<Song>/*.gp   -> tab db-<band>-<song>   newest file in the folder (working versions)
+    folders named in TABRENDER_DROPBOX_IGNORE (misc, archives) are skipped."""
     changed = 0
 
     def do(src: str, tab_id: str, title: str, artist: str) -> None:
@@ -110,16 +131,34 @@ def import_mirror(mirror: str, tabs_dir: str, public: bool = True) -> int:
         return sorted(n for n in os.listdir(d) if not n.startswith(".") and n.lower().endswith(TAB_EXTS))
 
     def subdirs(d: str):
-        return sorted(n for n in os.listdir(d) if not n.startswith(".") and os.path.isdir(os.path.join(d, n)) and n.lower() not in IGNORE_DIRS)
+        return sorted(
+            n
+            for n in os.listdir(d)
+            if not n.startswith(".") and os.path.isdir(os.path.join(d, n)) and n.lower() not in IGNORE_DIRS
+        )
 
     for name in files(mirror):
         stem, ext = os.path.splitext(name)
-        do(os.path.join(mirror, name), ID_PREFIX + slug(stem) + ("" if ext.lower() == ".gp" else "-" + ext.lower().lstrip(".")), stem, "")
+        do(
+            os.path.join(mirror, name),
+            ID_PREFIX + slug(stem) + ("" if ext.lower() == ".gp" else "-" + ext.lower().lstrip(".")),
+            stem,
+            "",
+        )
     for band in subdirs(mirror):
         bdir = os.path.join(mirror, band)
         for name in files(bdir):
             stem, ext = os.path.splitext(name)
-            do(os.path.join(bdir, name), ID_PREFIX + slug(band) + "-" + slug(stem) + ("" if ext.lower() == ".gp" else "-" + ext.lower().lstrip(".")), stem, band)
+            do(
+                os.path.join(bdir, name),
+                ID_PREFIX
+                + slug(band)
+                + "-"
+                + slug(stem)
+                + ("" if ext.lower() == ".gp" else "-" + ext.lower().lstrip(".")),
+                stem,
+                band,
+            )
         for song in subdirs(bdir):
             newest = _newest_tab(os.path.join(bdir, song))
             if newest:

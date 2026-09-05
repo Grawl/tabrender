@@ -1,0 +1,22 @@
+# Lint gate: types/lint/format for every tracked file type. Blocks merge on failure.
+stages: [lint]
+
+lint:python:
+  stage: lint
+  image: python:3.12-slim
+  script:
+    - pip install --quiet ruff
+    - ruff check
+    - ruff format --check
+
+lint:web:
+  stage: lint
+  image: node:22-bookworm-slim
+  cache:
+    key: npm
+    paths: [.npm/]
+  script:
+    - npm ci --cache .npm --prefer-offline --no-audit --no-fund
+    - npx oxlint
+    - npx oxfmt --check
+    - npx markdownlint-cli2

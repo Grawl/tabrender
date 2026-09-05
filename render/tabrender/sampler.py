@@ -1,12 +1,16 @@
 """Tiny one-shot SFZ sampler with pitch-bend-aware resampling."""
+
 from __future__ import annotations
+
 import functools
 import math
+
 import numpy as np
 import soundfile as sf
 from scipy.signal import resample_poly
-from .sfz import Region, parse
+
 from .midi_events import Note
+from .sfz import Region, parse
 
 
 @functools.lru_cache(maxsize=4096)
@@ -56,7 +60,9 @@ class Articulation:
         return cands[0]
 
 
-def _envelope(n: int, sr: int, attack: float, decay: float, sustain: float, hold_samples: int, release: float) -> np.ndarray:
+def _envelope(
+    n: int, sr: int, attack: float, decay: float, sustain: float, hold_samples: int, release: float
+) -> np.ndarray:
     env = np.ones(n, dtype=np.float32)
     a = max(1, int(attack * sr))
     env[: min(a, n)] = np.linspace(0, 1, min(a, n), dtype=np.float32)
@@ -75,7 +81,7 @@ def _envelope(n: int, sr: int, attack: float, decay: float, sustain: float, hold
 
 def render_notes(
     notes: list[Note],
-    art_for: "callable",
+    art_for: callable,
     bends: list[tuple[float, float]],
     sr: int = 44100,
     length: float | None = None,
@@ -107,10 +113,7 @@ def render_notes(
         smp = _load(region["sample"], sr, stereo)
         off = int(region.f("offset", 0))
         smp = smp[off:]
-        if oneshot:
-            hold = len(smp)
-        else:
-            hold = max(int((note.end - note.start) * sr), int(0.02 * sr))
+        hold = len(smp) if oneshot else max(int((note.end - note.start) * sr), int(0.02 * sr))
         n = min(len(smp), hold + int(release * sr) + 1)
         # time-varying pitch ratio: base transposition + pitch bend (semitones)
         base = note.pitch - region.keycenter + region.f("transpose", 0) + region.f("tune", 0) / 100.0
@@ -125,7 +128,9 @@ def render_notes(
             continue
         idx = np.arange(len(smp))
         if stereo:
-            seg = np.stack([np.interp(pos[:n], idx, smp[:, 0]), np.interp(pos[:n], idx, smp[:, 1])], axis=1).astype(np.float32)
+            seg = np.stack([np.interp(pos[:n], idx, smp[:, 0]), np.interp(pos[:n], idx, smp[:, 1])], axis=1).astype(
+                np.float32
+            )
         else:
             seg = np.interp(pos[:n], idx, smp).astype(np.float32)
         start = int(note.start * sr)
@@ -139,9 +144,13 @@ def render_notes(
                 n = min(n, hold + int(0.03 * sr))
                 seg = seg[:n]
         env = _envelope(
-            n, sr,
-            region.f("ampeg_attack", 0.001), region.f("ampeg_decay", 0), region.f("ampeg_sustain", 100) / 100.0,
-            hold, max(release, region.f("ampeg_release", 0)),
+            n,
+            sr,
+            region.f("ampeg_attack", 0.001),
+            region.f("ampeg_decay", 0),
+            region.f("ampeg_sustain", 100) / 100.0,
+            hold,
+            max(release, region.f("ampeg_release", 0)),
         )
         vel = 1.0 - veltrack * (1.0 - note.velocity / 127.0)
         gain = 10 ** (region.f("volume", 0) / 20.0) * vel

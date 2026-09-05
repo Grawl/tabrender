@@ -43,8 +43,9 @@ and the Python deps from the Dockerfile).
 
 `tabrender/dropbox_import.py` mirrors a Dropbox folder with rclone on every watcher tick and imports
 `<Band>/<Song>.gp*` as tab `db-<band>-<song>` (title = file name, artist = band folder, public by default).
-A song folder inside a band folder (`<Band>/<Song>/*.gp`, dated working versions) becomes one tab from its newest file;
-folders named in `TABRENDER_DROPBOX_IGNORE` (misc, archives) are skipped. Re-uploading a file updates the tab and triggers a re-render; deleting in Dropbox leaves the tab in place.
+A song folder inside a band folder (`<Band>/<Song>/*.gp`, dated working versions) becomes one tab from its newest
+file; folders named in `TABRENDER_DROPBOX_IGNORE` (misc, archives) are skipped. Re-uploading a file updates the tab
+and triggers a re-render; deleting in Dropbox leaves the tab in place.
 
 Setup: `rclone authorize "dropbox"` on a machine with a browser, put the resulting token into
 `../rclone/rclone.conf` as remote `[dropbox]` (`type = dropbox`, `token = {...}`), set

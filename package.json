@@ -1,0 +1,16 @@
+{
+	"name": "tabs",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"lint": "oxlint && oxfmt --check && markdownlint-cli2 && ruff check && ruff format --check",
+		"format": "oxfmt && ruff format && ruff check --fix",
+		"prek": "prek run --all-files"
+	},
+	"devDependencies": {
+		"@j178/prek": "^0.2.0",
+		"markdownlint-cli2": "^0.18.0",
+		"oxfmt": "^0.2.0",
+		"oxlint": "^1.0.0"
+	}
+}

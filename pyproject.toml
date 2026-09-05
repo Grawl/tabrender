@@ -1,0 +1,11 @@
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+extend-exclude = ["render/assets", "render/out", "sf-compare"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "N", "SIM", "RUF"]
+ignore = ["E501"]
+
+[tool.ruff.format]
+quote-style = "double"

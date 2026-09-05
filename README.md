@@ -9,3 +9,23 @@ plus a renderer that turns every tab into an MP3 with sampled guitars, amp captu
 - `soundfont/` — GM soundfont for the in-browser MIDI preview; `sf2mono.py` patches stereo samples to mono because
   alphaTab's synth drops them (presets go silent).
 - `sf-compare/` — local A/B page for soundfonts (diagnostic).
+
+## What is not in git and where it comes from
+
+| Path | What | Source |
+| --- | --- | --- |
+| `data/` | It's MyTabs runtime: `config.db` (account), `tabs/<id>/` (tab file, `config.json`, `render.mp3`, `.render.json`), `dropbox-mirror/` | created by the app, the renderer and the Dropbox import; back it up, never regenerate |
+| `soundfont/*.sf2` | GM soundfonts for the MIDI preview | `sonivox.sf2` ships inside the `louislam/its-mytabs` image (`/app/dist/soundfont/`); `FluidR3_GM.sf2` from <https://ftp.osuosl.org/pub/musescore/soundfont/fluid-soundfont.tar.gz>, then `python3 soundfont/sf2mono.py FluidR3_GM.sf2 FluidR3_GM_mono.sf2`; `GeneralUser_GS.sf2` from <https://github.com/mrbumpy409/GeneralUser-GS> |
+| `render/assets/` | DI guitar libraries, drum kit, IRs, Proteus captures | `render/download-assets.sh` (~3 GB, Google Drive + GitHub + archive.org) |
+| `render/assets/amps/nam/`, `render/assets/ir/t3k/` | NAM captures and IRs from tone3000 | `render/download-tone3000.sh`, needs `render/.tone3000-key` |
+| `render/.tone3000-key` | tone3000 account Secret Key | tone3000.com → Settings → API Keys |
+| `rclone/rclone.conf` | Dropbox token for the import | `rclone authorize "dropbox"` on a machine with a browser, paste the token as `[dropbox] type = dropbox token = {...}` |
+| `render/out/` | local render experiments | scratch |
+| `sf-compare/alphatab/`, `sf-compare/sf`, `sf-compare/tabs/` | vendored alphaTab build, soundfont symlink and tab copies for the A/B page | `npm pack @coderline/alphatab@1.8.0` → `dist/`; symlink `sf -> ../soundfont`; copy tabs from `data/` |
+| `node_modules/` | linters, formatter, prek | `npm install` |
+
+## Development
+
+`npm install` brings oxlint, oxfmt, markdownlint-cli2 and prek; ruff comes from `brew install ruff` or
+`pip install ruff`. `npx prek install` enables the pre-commit hooks; `npm run lint` runs everything, `npm run format`
+fixes what can be fixed. GitLab CI runs the same checks in the `lint` stage.

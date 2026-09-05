@@ -1,6 +1,9 @@
 """Parse an SMF (from alphaTab) into per-channel note events in seconds."""
+
 from __future__ import annotations
+
 from dataclasses import dataclass, field
+
 import mido
 
 

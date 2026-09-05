@@ -1,0 +1,9 @@
+{
+	"globs": ["**/*.md"],
+	"ignores": ["node_modules/**", "render/assets/**", "render/node_modules/**", "sf-compare/alphatab/**"],
+	"config": {
+		"default": true,
+		"MD013": { "line_length": 120, "tables": false },
+		"MD033": false
+	}
+}

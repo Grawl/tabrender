@@ -1,9 +1,12 @@
 """Cabinet impulse response convolution."""
+
 from __future__ import annotations
+
+import math
+
 import numpy as np
 import soundfile as sf
 from scipy.signal import fftconvolve, resample_poly
-import math
 
 
 def load_ir(path: str, sr: int, max_len: float = 0.5) -> np.ndarray:
@@ -13,7 +16,7 @@ def load_ir(path: str, sr: int, max_len: float = 0.5) -> np.ndarray:
         g = math.gcd(fsr, sr)
         ir = resample_poly(ir, sr // g, fsr // g).astype(np.float32)
     ir = ir[: int(max_len * sr)]
-    ir /= np.sqrt(np.sum(ir ** 2)) + 1e-9  # unit energy
+    ir /= np.sqrt(np.sum(ir**2)) + 1e-9  # unit energy
     return ir
 
 

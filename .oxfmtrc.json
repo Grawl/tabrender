@@ -1,0 +1,8 @@
+{
+	"$schema": "./node_modules/oxfmt/configuration_schema.json",
+	"useTabs": true,
+	"semi": false,
+	"singleQuote": true,
+	"printWidth": 120,
+	"ignorePatterns": ["render/assets/**", "render/out/**", "sf-compare/alphatab/**", "sf-compare/tabs/**", "data/**", "rclone/**", "package-lock.json"]
+}

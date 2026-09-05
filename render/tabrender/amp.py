@@ -1,21 +1,25 @@
 """GuitarML Proteus (RTNeural SimpleRNN/LSTM) inference with torch."""
+
 from __future__ import annotations
+
 import json
+
 import numpy as np
 import torch
 
 
 class ProteusAmp:
     def __init__(self, path: str):
-        d = json.load(open(path))
+        with open(path) as fh:
+            d = json.load(fh)
         md = d["model_data"]
         assert md["unit_type"] == "LSTM" and md["num_layers"] == 1, md
         self.input_size = md["input_size"]
         self.skip = md.get("skip", 1)
         sd = d["state_dict"]
-        H = md["hidden_size"]
-        self.lstm = torch.nn.LSTM(self.input_size, H, batch_first=True)
-        self.lin = torch.nn.Linear(H, 1)
+        hidden = md["hidden_size"]
+        self.lstm = torch.nn.LSTM(self.input_size, hidden, batch_first=True)
+        self.lin = torch.nn.Linear(hidden, 1)
         with torch.no_grad():
             self.lstm.weight_ih_l0.copy_(torch.tensor(sd["rec.weight_ih_l0"]))
             self.lstm.weight_hh_l0.copy_(torch.tensor(sd["rec.weight_hh_l0"]))
@@ -23,7 +27,8 @@ class ProteusAmp:
             self.lstm.bias_hh_l0.copy_(torch.tensor(sd["rec.bias_hh_l0"]).flatten())
             self.lin.weight.copy_(torch.tensor(sd["lin.weight"]))
             self.lin.bias.copy_(torch.tensor(sd["lin.bias"]).flatten())
-        self.lstm.eval(); self.lin.eval()
+        self.lstm.eval()
+        self.lin.eval()
 
     @torch.no_grad()
     def process(self, x: np.ndarray, knob: float = 0.5, chunk: int = 1 << 16) -> np.ndarray:
@@ -46,6 +51,7 @@ def _stub_nam_train() -> None:
     loader is needed here, so register an empty nam.train before the package initialises."""
     import sys
     import types
+
     if "nam.train" not in sys.modules:
         sys.modules["nam.train"] = types.ModuleType("nam.train")
 
@@ -57,7 +63,9 @@ class NamAmp:
     def __init__(self, path: str, sr: int = 44100):
         _stub_nam_train()
         from nam.models._from_nam import init_from_nam  # heavy import, keep lazy
-        d = json.load(open(path))
+
+        with open(path) as fh:
+            d = json.load(fh)
         self.model = init_from_nam(d)
         self.model.eval()
         self.model_rate = int(d.get("sample_rate") or getattr(self.model, "sample_rate", None) or 48000)
@@ -67,7 +75,9 @@ class NamAmp:
     @torch.no_grad()
     def process(self, x: np.ndarray, knob: float = 0.5, chunk: int = 1 << 18) -> np.ndarray:
         import math
+
         from scipy.signal import resample_poly
+
         n_in = len(x)
         if self.model_rate != self.sr:
             g = math.gcd(self.model_rate, self.sr)

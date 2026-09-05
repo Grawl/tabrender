@@ -1,18 +1,26 @@
 """Watch It's MyTabs data/tabs; render an MP3 next to every tab file (picked up as audio automatically)."""
+
 from __future__ import annotations
+
 import hashlib
 import json
 import os
 import sys
 import time
 import traceback
-from .render import render, log
+
 from .dropbox_import import sync_and_import
+from .render import log, render
 
 TAB_EXTS = (".gp", ".gpx", ".gp3", ".gp4", ".gp5", ".musicxml", ".xml", ".capx")
 OUT_NAME = os.environ.get("TABRENDER_OUT_NAME", "render.mp3")
 STATE_NAME = ".render.json"
 VERSION = 10  # bump to force re-render after pipeline changes
+
+
+def _save(path: str, obj: dict) -> None:
+    with open(path, "w") as fh:
+        json.dump(obj, fh)
 
 
 def _sha(path: str) -> str:
@@ -35,7 +43,8 @@ def _priority(tabs_dir: str, entry: str) -> tuple:
     if not entry.startswith("db-"):
         return (0, entry)
     try:
-        artist = json.load(open(os.path.join(tabs_dir, entry, "config.json")))["tab"].get("artist", "")
+        with open(os.path.join(tabs_dir, entry, "config.json")) as fh:
+            artist = json.load(fh)["tab"].get("artist", "")
     except Exception:
         artist = ""
     return (1 if artist else 2, entry)
@@ -54,7 +63,8 @@ def scan_once(tabs_dir: str) -> None:
         state = {}
         if os.path.exists(state_path):
             try:
-                state = json.load(open(state_path))
+                with open(state_path) as fh:
+                    state = json.load(fh)
             except Exception:
                 state = {}
         sha = _sha(tab)
@@ -67,10 +77,10 @@ def scan_once(tabs_dir: str) -> None:
         try:
             info = render(tab, tmp)
             os.replace(tmp, out_path)
-            json.dump({"sha": sha, "version": VERSION, "info": info, "at": time.time()}, open(state_path, "w"))
+            _save(state_path, {"sha": sha, "version": VERSION, "info": info, "at": time.time()})
         except Exception as e:
             traceback.print_exc()
-            json.dump({"sha": sha, "version": VERSION, "error": str(e), "at": time.time()}, open(state_path, "w"))
+            _save(state_path, {"sha": sha, "version": VERSION, "error": str(e), "at": time.time()})
         finally:
             if os.path.exists(tmp):
                 os.remove(tmp)

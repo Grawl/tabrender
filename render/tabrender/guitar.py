@@ -1,23 +1,35 @@
 """Guitar/bass DI rendering with articulation selection + amp + cab."""
+
 from __future__ import annotations
+
 import os
-import numpy as np
+
 import numpy as np
 from scipy.signal import butter, sosfilt
+
+from . import amp as ampmod
+from . import cab as cabmod
+from .midi_events import Channel, Note
 from .sampler import Articulation, render_notes
-from .midi_events import Note, Channel
-from . import amp as ampmod, cab as cabmod
 
 
 class GuitarKit:
     """One SFZ library: sustain / palm-mute articulations."""
 
-    def __init__(self, root: str, patch_dir: str, sustain: str = "Sus_Down.sfz", mute: str = "Mute_Down.sfz", offset_ms: float = 0.0):
+    def __init__(
+        self,
+        root: str,
+        patch_dir: str,
+        sustain: str = "Sus_Down.sfz",
+        mute: str = "Mute_Down.sfz",
+        offset_ms: float = 0.0,
+    ):
         self.sus = Articulation(os.path.join(patch_dir, sustain), root)
         self.mute = Articulation(os.path.join(patch_dir, mute), root)
 
-    def render(self, ch: Channel, articulations: dict[str, list[str]], track_index: int, sr: int, length: float,
-               take: int = 0) -> np.ndarray:
+    def render(
+        self, ch: Channel, articulations: dict[str, list[str]], track_index: int, sr: int, length: float, take: int = 0
+    ) -> np.ndarray:
         """take > 0 renders an alternative performance for double tracking: different round-robins,
         a few ms of timing slop and slight detune."""
         rng = np.random.default_rng(100 + take)
@@ -34,7 +46,17 @@ class GuitarKit:
 
         notes = _legato(ch.notes, articulations, track_index)
         if take:
-            notes = [Note(n.start + float(rng.uniform(0.004, 0.012)), n.end + float(rng.uniform(0.004, 0.012)), n.pitch, n.velocity, n.tick, n.channel) for n in notes]
+            notes = [
+                Note(
+                    n.start + float(rng.uniform(0.004, 0.012)),
+                    n.end + float(rng.uniform(0.004, 0.012)),
+                    n.pitch,
+                    n.velocity,
+                    n.tick,
+                    n.channel,
+                )
+                for n in notes
+            ]
             bends = [(t, v + 0.03) for t, v in ch.bends] or [(0.0, 0.03)]
         else:
             bends = ch.bends
@@ -49,14 +71,15 @@ def _legato(notes: list[Note], articulations, track_index: int, min_pm: float = 
     for i, n in enumerate(by_start):
         end = n.end
         flags = articulations.get(f"{track_index}:{n.tick}:{n.pitch}", ())
-        if "pm" in flags or "dead" in flags:
-            end = max(end, n.start + min_pm)
-        else:
-            end = max(end, n.start + 0.1)
+        end = max(end, n.start + min_pm) if ("pm" in flags or "dead" in flags) else max(end, n.start + 0.1)
         # next note anywhere on this channel: let this one ring slightly past it
         nxt = next((m for m in by_start[i + 1 :] if m.start > n.start + 1e-3), None)
         if nxt is not None:
-            end = max(min(end, nxt.start + gap), n.start + 0.05) if "pm" in flags else max(end, min(nxt.start + gap, n.end + 0.15))
+            end = (
+                max(min(end, nxt.start + gap), n.start + 0.05)
+                if "pm" in flags
+                else max(end, min(nxt.start + gap, n.end + 0.15))
+            )
         out.append(Note(n.start, end, n.pitch, n.velocity, n.tick, n.channel))
     return out
 
@@ -68,8 +91,17 @@ def _sos(kind: str, freq: float, sr: int, order: int = 2):
 class AmpChain:
     """DI -> tightening high-pass ("boost pedal" style) -> amp capture -> cab IR -> post EQ."""
 
-    def __init__(self, amp_json: str, ir_wav: str | None, sr: int, input_gain: float = 1.0, knob: float = 0.5,
-                 pre_hpf: float = 0.0, post_hpf: float = 0.0, post_lpf: float = 0.0):
+    def __init__(
+        self,
+        amp_json: str,
+        ir_wav: str | None,
+        sr: int,
+        input_gain: float = 1.0,
+        knob: float = 0.5,
+        pre_hpf: float = 0.0,
+        post_hpf: float = 0.0,
+        post_lpf: float = 0.0,
+    ):
         self.amp = ampmod.load_amp(amp_json, sr)
         # full-rig captures already include the cabinet: skip the IR unless one is forced
         self.ir = None if (getattr(self.amp, "full_rig", False) and not ir_wav) else cabmod.load_ir(ir_wav, sr)
@@ -77,10 +109,14 @@ class AmpChain:
         self.knob = knob
         self.sr = sr
         self.pre = _sos("highpass", pre_hpf, sr, 1) if pre_hpf else None
-        self.post = [f for f in (
-            _sos("highpass", post_hpf, sr, 2) if post_hpf else None,
-            _sos("lowpass", post_lpf, sr, 2) if post_lpf else None,
-        ) if f is not None]
+        self.post = [
+            f
+            for f in (
+                _sos("highpass", post_hpf, sr, 2) if post_hpf else None,
+                _sos("lowpass", post_lpf, sr, 2) if post_lpf else None,
+            )
+            if f is not None
+        ]
 
     def process(self, di: np.ndarray) -> np.ndarray:
         peak = float(np.abs(di).max()) + 1e-9
