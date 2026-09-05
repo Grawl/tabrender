@@ -12,7 +12,7 @@ import time
 import numpy as np
 import soundfile as sf
 
-from . import fluid, midi_events
+from . import bass, fluid, midi_events
 from .drumkit import DrumKit
 from .drums import KICK_NOTES, limiter, synth_kick
 from .guitar import AmpChain, GuitarKit
@@ -48,6 +48,8 @@ CONFIG = {
     "drumkit": "drums/ALL.sfz",  # Salamander Drumkit (SFZ); falls back to FluidSynth if missing
     "drum_velocity_boost": 25,  # GP dynamics land around 79; push into the kit's hard-hit layers
     "level_bass": 0.6,
+    "bass_program": 34,  # every bass track plays FluidR3 "Electric Bass (pick)" before the bass chain
+    "bass_drive": 6.0,  # split-band drive on the bass (see bass.py)
     "level_other": 0.3,
 }
 
@@ -91,6 +93,9 @@ def render(gp_path: str, out_mp3: str, config: dict | None = None) -> dict:
             prog, chans = t["program"], {t["primaryChannel"], t["secondaryChannel"]}
             vol = t["volume"] / 16.0
             is_perc = bool(t.get("isPercussion")) or t["primaryChannel"] == 9
+            if prog == 127 and not is_perc:
+                log(f"track {t['index']} '{t['name']}': program 127 (GP percussion sound exported as Gunshot), muted")
+                continue
             is_guitar = (not is_perc) and (prog in DIST_PROGRAMS or prog in CLEAN_GUITAR_PROGRAMS)
             if not is_guitar:
                 g = "drums" if is_perc else "bass" if prog in BASS_PROGRAMS else "other"
@@ -162,6 +167,9 @@ def render(gp_path: str, out_mp3: str, config: dict | None = None) -> dict:
                 hits = [n.start for c in chans if c in channels for n in channels[c].notes if n.pitch in KICK_NOTES]
                 if hits:
                     add_stem(synth_kick(hits, n_samples, SR), cfg["level_kick_synth"])
+            elif g == "bass":
+                di = fluid.render(midi_path, chans, SOUNDFONT, SR, legato=True, program=cfg["bass_program"])
+                add_stem(bass.process(di, SR, drive=cfg["bass_drive"]), cfg["level_bass"])
             else:
                 add_stem(fluid.render(midi_path, chans, SOUNDFONT, SR), cfg["level_" + g])
 

@@ -16,7 +16,7 @@ from .render import log, render
 TAB_EXTS = (".gp", ".gpx", ".gp3", ".gp4", ".gp5", ".musicxml", ".xml", ".capx")
 OUT_NAME = os.environ.get("TABRENDER_OUT_NAME", "render.mp3")
 STATE_NAME = ".render.json"
-VERSION = 10  # bump to force re-render after pipeline changes
+VERSION = 11  # bump to force re-render after pipeline changes
 
 
 def _save(path: str, obj: dict) -> None:
@@ -51,7 +51,8 @@ def _priority(tabs_dir: str, entry: str) -> tuple:
     return (1 if artist else 2, entry)
 
 
-def scan_once(tabs_dir: str) -> None:
+def render_next(tabs_dir: str) -> bool:
+    """Render the first tab whose render.mp3 is missing or stale; True if one was rendered."""
     for entry in sorted(os.listdir(tabs_dir), key=lambda e: _priority(tabs_dir, e)):
         d = os.path.join(tabs_dir, entry)
         if entry == "deleted" or not os.path.isdir(d):
@@ -85,6 +86,8 @@ def scan_once(tabs_dir: str) -> None:
         finally:
             if os.path.exists(tmp):
                 os.remove(tmp)
+        return True
+    return False
 
 
 def main() -> None:
@@ -94,9 +97,9 @@ def main() -> None:
     while True:
         try:
             sync_and_import(tabs_dir)
-            publish(tabs_dir)  # before rendering: new tabs reach the band instances right away
-            scan_once(tabs_dir)
-            publish(tabs_dir)  # after: fresh render.mp3 files
+            publish(tabs_dir)  # new tabs (and every fresh render.mp3) reach the band instances right away
+            if render_next(tabs_dir):
+                continue  # one tab per pass, so publishing keeps up with the queue
         except Exception:
             traceback.print_exc()
         time.sleep(interval)
