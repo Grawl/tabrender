@@ -38,7 +38,7 @@ lint:web:
     - DEST="--destination $CI_REGISTRY_IMAGE/$IMAGE_NAME:$CI_COMMIT_REF_SLUG"
     - if [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ]; then DEST="$DEST --destination $CI_REGISTRY_IMAGE/$IMAGE_NAME:latest"; fi
   script:
-    - /kaniko/executor --context "$CI_PROJECT_DIR/$IMAGE_CONTEXT" --dockerfile "$CI_PROJECT_DIR/$IMAGE_CONTEXT/Dockerfile" $IMAGE_BUILD_ARGS $DEST
+    - /kaniko/executor --context "$CI_PROJECT_DIR/$IMAGE_CONTEXT" --dockerfile "$CI_PROJECT_DIR/$IMAGE_CONTEXT/Dockerfile" --cache=true --cache-repo "$CI_REGISTRY_IMAGE/kaniko-cache" --cache-ttl 720h $IMAGE_BUILD_ARGS $DEST
 
 image:app:
   extends: .kaniko
