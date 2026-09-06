@@ -1,5 +1,6 @@
-# Lint gate: types/lint/format for every tracked file type. Blocks merge on failure.
-stages: [lint]
+# Lint every push; build the container images on every push (tagged by branch), tag them "latest" from main
+# and redeploy the "tabs" Portainer stack on the server.
+stages: [lint, image, deploy]
 
 lint:python:
   stage: lint
@@ -20,3 +21,65 @@ lint:web:
     - npx oxlint
     - npx oxfmt --check
     - npx markdownlint-cli2
+
+# Kaniko builds without a Docker daemon. $IMAGE_TAGS carries the --destination flags:
+# <ref-slug> always, plus "latest" on the default branch.
+.kaniko:
+  stage: image
+  image:
+    name: gcr.io/kaniko-project/executor:v1.24.0-debug
+    entrypoint: [""]
+  needs: []
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+  before_script:
+    - mkdir -p /kaniko/.docker
+    - printf '{"auths":{"%s":{"auth":"%s"}}}' "$CI_REGISTRY" "$(printf '%s:%s' "$CI_REGISTRY_USER" "$CI_REGISTRY_PASSWORD" | base64 | tr -d '\n')" > /kaniko/.docker/config.json
+    - DEST="--destination $CI_REGISTRY_IMAGE/$IMAGE_NAME:$CI_COMMIT_REF_SLUG"
+    - if [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ]; then DEST="$DEST --destination $CI_REGISTRY_IMAGE/$IMAGE_NAME:latest"; fi
+  script:
+    - /kaniko/executor --context "$CI_PROJECT_DIR/$IMAGE_CONTEXT" --dockerfile "$CI_PROJECT_DIR/$IMAGE_CONTEXT/Dockerfile" $IMAGE_BUILD_ARGS $DEST
+
+image:app:
+  extends: .kaniko
+  variables:
+    IMAGE_NAME: app
+    IMAGE_CONTEXT: app
+    IMAGE_BUILD_ARGS: --build-arg ANALYTICS_SRC=$ANALYTICS_SRC --build-arg ANALYTICS_ID=$ANALYTICS_ID
+
+image:app-vermin:
+  extends: .kaniko
+  variables:
+    IMAGE_NAME: app-vermin
+    IMAGE_CONTEXT: app
+    IMAGE_BUILD_ARGS: --build-arg BASE=/vermin --build-arg ANALYTICS_SRC=$ANALYTICS_SRC --build-arg ANALYTICS_ID=$ANALYTICS_ID
+
+image:app-mm:
+  extends: .kaniko
+  variables:
+    IMAGE_NAME: app-mm
+    IMAGE_CONTEXT: app
+    IMAGE_BUILD_ARGS: --build-arg BASE=/mm --build-arg ANALYTICS_SRC=$ANALYTICS_SRC --build-arg ANALYTICS_ID=$ANALYTICS_ID
+
+image:render:
+  extends: .kaniko
+  variables:
+    IMAGE_NAME: render
+    IMAGE_CONTEXT: render
+    IMAGE_BUILD_ARGS: ""
+
+deploy:
+  stage: deploy
+  image: alpine:3.22
+  tags: [aspire]
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  environment:
+    name: production
+    url: https://tabs.grawl.ru
+  variables:
+    PORTAINER_URL: http://192.168.3.35:9000
+    PORTAINER_ENDPOINT_ID: "3"
+  script:
+    - apk add --no-cache curl jq >/dev/null
+    - deploy/portainer-redeploy.sh tabs
