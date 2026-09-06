@@ -63,6 +63,8 @@ image:app-mm:
 
 image:render:
   extends: .kaniko
+  # ~2 GB image (torch): build next to the registry so the push stays on the server
+  tags: [server]
   variables:
     IMAGE_NAME: render
     IMAGE_CONTEXT: render
