@@ -16,7 +16,7 @@
 //
 // The Solo/Mute buttons in the track sheet (`.list-button.solo`/`.mute`) collapse to single-letter `S`/`M` chips (via `::before`; the row's own `Solo`/`Mute` text is hidden with `font-size: 0`) at every width, coloured when active, since spelling both words out left too little room for the track name once the sheet is this narrow; the sheet's close glyph shrinks with it (still a 44×44 tap target, just a smaller icon inside) to match. Hover backgrounds on these chips and on the list row itself are dropped under `@media (hover: none)`, since a touch "hover" on such a device is really the tap itself and never clears until something else is tapped, leaving a chip visibly stuck highlighted after use.
 //
-// Solo and Mute are reimplemented by this addon instead of left to the upstream Vue component: upstream's own `toggleSolo` mutes every other track directly rather than calling alphaTab's own `changeTrackSolo`, which means only one track can ever be soloed and the synth's own per-channel solo state is never actually touched. This addon intercepts the chip clicks in the capture phase (before Vue's own `onClick` fires on the same element) and tracks solo/mute per track index in its own two `Set`s, replaying them through `api.changeTrackSolo`/`api.changeTrackMute` so multiple tracks can be soloed at once. The synth recreates its whole channel graph on every audio-source switch (Synth ↔ Render ↔ YouTube), which drops all channel state including solo/mute, so this addon re-applies its two `Set`s on every `api.playerReady` event, not just once at startup. Solo/Mute only affect the synth's own channels, so with an external audio source (Render, YouTube, an uploaded file) they have no audible effect; the chips are dimmed and given an explanatory title in that state, while the underlying `Set`s are kept so they take effect again once the Synth source is reselected.
+// Solo and Mute are reimplemented by this addon instead of left to the upstream Vue component: upstream's own `toggleSolo` mutes every other track directly rather than calling alphaTab's own `changeTrackSolo`, which means only one track can ever be soloed and the synth's own per-channel solo state is never actually touched. This addon intercepts the chip clicks in the capture phase (before Vue's own `onClick` fires on the same element) and tracks solo/mute per track index in its own two `Set`s, replaying them through `api.changeTrackSolo`/`api.changeTrackMute` so multiple tracks can be soloed at once. The synth recreates its whole channel graph on every audio-source switch (Synth ↔ Render ↔ YouTube), which drops all channel state including solo/mute, so this addon re-applies its two `Set`s on every `api.playerReady` event, not just once at startup. Solo/Mute only affect the synth's own channels, so with an external audio source (Render, YouTube, an uploaded file) they have no audible effect; the chips and the volume knobs are dimmed and given an explanatory title in that state, while the underlying `Set`s are kept so they take effect again once the Synth source is reselected. The chips are focusable (`tabindex=0`, Enter/Space toggle them) and show focus as an outline ring; hover never changes their background beyond the neutral grey.
 //
 // `.toolbar`, its open list, the speed menu and the score container get `touch-action: manipulation` under `@media (pointer: coarse)`, so a double-tap on any of these controls fires its own click handler instead of the browser's double-tap-to-zoom. The volume knob's own `touch-action: none` still wins over it there, since `touch-action` is not inherited but the effective value browsers use is the intersection of an element and its ancestors, and `none` is the more restrictive of the two.
 //
@@ -140,9 +140,25 @@
 	background-color: #49535a;
 }
 .toolbar .track-list[data-external-audio="1"] .list-button.solo,
-.toolbar .track-list[data-external-audio="1"] .list-button.mute {
+.toolbar .track-list[data-external-audio="1"] .list-button.mute,
+.toolbar .track-list[data-external-audio="1"] .volume-knob {
 	opacity: 0.4;
 	pointer-events: none;
+}
+.toolbar .track-list .track .list-button.solo:hover,
+.toolbar .track-list .track .list-button.mute:hover {
+	background-color: #49535a;
+}
+.toolbar .track-list .track[data-solo="1"] .list-button.solo:hover {
+	background-color: #ffc107;
+}
+.toolbar .track-list .track[data-mute="1"] .list-button.mute:hover {
+	background-color: #dc3545;
+}
+.toolbar .track-list .track .list-button.solo:focus-visible,
+.toolbar .track-list .track .list-button.mute:focus-visible {
+	outline: 2px solid #fff;
+	outline-offset: 2px;
 }
 @media (hover: none) {
 	.toolbar .track-list .track .list-button.solo:hover,
@@ -560,6 +576,8 @@
   let vueProxy = null
   let observedApi = null
   let observedScore = null
+  const SOLO_MUTE_CHIP_SELECTOR =
+    ".toolbar .track-list .track .list-button.solo, .toolbar .track-list .track .list-button.mute"
   const soloTracks = new Set()
   const mutedTracks = new Set()
   const volumeByTrack = new Map()
@@ -1225,6 +1243,11 @@
           window.api && window.api.score && window.api.score.tracks[index]
         if (!track) return
         row.dataset.trackIndex = String(track.index)
+        row
+          .querySelectorAll(".list-button.solo, .list-button.mute")
+          .forEach((chip) => {
+            chip.tabIndex = 0
+          })
         if (row.dataset.enhanced !== "1") {
           row.dataset.enhanced = "1"
           insertRowIcon(row, track)
@@ -1288,12 +1311,18 @@
     syncTrackListAudioState()
   }
 
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return
+    const chip = event.target.closest?.(SOLO_MUTE_CHIP_SELECTOR)
+    if (!chip) return
+    event.preventDefault()
+    chip.click()
+  })
+
   document.addEventListener(
     "click",
     (event) => {
-      const button = event.target.closest(
-        ".toolbar .track-list .track .list-button.solo, .toolbar .track-list .track .list-button.mute",
-      )
+      const button = event.target.closest(SOLO_MUTE_CHIP_SELECTOR)
       if (!button) return
       event.stopPropagation()
       const row = button.closest(".track.item")
