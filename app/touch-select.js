@@ -17,6 +17,13 @@
   const style = document.createElement("style")
   style.textContent = `
 @media (pointer: coarse) {
+	/* a long press on the tab must not start the native text selection / callout (iOS) */
+	.alphaTab,
+	.alphaTab * {
+		-webkit-user-select: none;
+		user-select: none;
+		-webkit-touch-callout: none;
+	}
 	.at-selection-handle {
 		touch-action: none;
 		-webkit-user-select: none;
