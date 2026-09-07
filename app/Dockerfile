@@ -10,7 +10,14 @@
 #  6. a touch-select.js script tag in index.html, adding two-finger long-press playback-range
 #     selection for touch screens (the upstream selection handles are mouse-drag only);
 #  7. loop-fix.js: restarts a looped playback range correctly with an external audio file (alphaTab
-#     seeks one bar late and pauses there).
+#     seeks one bar late and pauses there);
+#  8. loop-audio.js + loop-audio-worklet.js: a gapless, pitch-preserving loop engine. It intercepts
+#     alphaTab's external-media output handler and plays the decoded render.mp3 through an
+#     AudioWorklet (crossfaded seam at normal speed, WSOLA time-stretch below it). It engages once the
+#     current source is decoded and falls back to the <audio> element (and loop-fix.js) otherwise:
+#     YouTube audio, decode failure, tabs longer than 10 minutes;
+#  9. Cache-Control (10 min) on the tab audio endpoint, so the engine's fetch reuses the element's
+#     download of render.mp3.
 # BASE (build arg, e.g. /band-a) re-bases the SPA under a sub-path: API base, router history base, socket.io
 # path, better-auth base, soundfont URL and index.html asset links. nginx strips the prefix (deploy/tabs.conf).
 # The build fails if the upstream code changed and an anchor is gone — re-check the patches then.
@@ -23,6 +30,8 @@ ARG ANALYTICS_ID=""
 USER root
 COPY --chown=deno:deno touch-select.js /app/dist/touch-select.js
 COPY --chown=deno:deno loop-fix.js /app/dist/loop-fix.js
+COPY --chown=deno:deno loop-audio.js /app/dist/loop-audio.js
+COPY --chown=deno:deno loop-audio-worklet.js /app/dist/loop-audio-worklet.js
 RUN set -eu; cd /app/dist/assets; f=$(ls Tab-*.js); \
     grep -q 'this.currentAudio=this.getConfig("audio","synth")' "$f"; \
     sed -i 's#this.currentAudio=this.getConfig("audio","synth")#this.currentAudio=this.getConfig("audio",this.audioList.some(o=>o.filename==="render.mp3")?"audio-render.mp3":"synth")#' "$f"; \
@@ -42,6 +51,10 @@ RUN set -eu; cd /app/dist/assets; f=$(ls Tab-*.js); \
     grep -q '            tabs.push(tab);' "$b"; \
     sed -i 's#            tabs.push(tab);#            Object.assign(tab, { hasRender: await fs.exists(path.join(tabDir, id, "render.mp3")) });\n            tabs.push(tab);#' "$b"; \
     grep -q hasRender "$b"; \
+    m=/app/backend/main.ts; \
+    grep -q '                "Accept-Ranges": "bytes",' "$m"; \
+    sed -i 's#                "Accept-Ranges": "bytes",#                "Accept-Ranges": "bytes",\n                "Cache-Control": "private, max-age=600",#' "$m"; \
+    grep -q 'Cache-Control' "$m"; \
     if [ -n "$BASE" ]; then \
       grep -q 'function sC(){return""}' "$i"; sed -i "s#function sC(){return\"\"}#function sC(){return\"$BASE\"}#" "$i"; \
       grep -q 'history:rk()' "$i"; sed -i "s#history:rk()#history:rk(\"$BASE\")#" "$i"; \
@@ -60,6 +73,8 @@ RUN set -eu; cd /app/dist/assets; f=$(ls Tab-*.js); \
     grep -q 'touch-select.js' "$h"; \
     sed -i "s#</head>#<script defer src=\"$BASE/loop-fix.js\"></script></head>#" "$h"; \
     grep -q 'loop-fix.js' "$h"; \
+    sed -i "s#</head>#<script defer src=\"$BASE/loop-audio.js\"></script></head>#" "$h"; \
+    grep -q 'loop-audio.js' "$h"; \
     if [ -n "$ANALYTICS_ID" ]; then \
       h=/app/dist/index.html; \
       sed -i "s#</head>#<script defer src=\"$ANALYTICS_SRC\" data-website-id=\"$ANALYTICS_ID\"></script></head>#" "$h"; \
