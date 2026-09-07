@@ -10,7 +10,7 @@
 //
 // Audio list rows (`.audio-list .item`) get the same treatment: an icon derived from the row's own visible text (`Synth`, `Youtube: …`, `No Audio…`, or a filename) via `audioRowKey`, inserted once per row (guarded via `dataset.enhanced`) the same way track list rows get their icon in `enhanceLists`.
 //
-// Icon path data (`INSTRUMENT_ICONS`, `AUDIO_ICONS`) is taken from the game-icons.net set by Delapouite, Caro Asercion, Zajkonur and Skoll, licensed CC BY 3.0 (https://creativecommons.org/licenses/by/3.0/). The toggle-button and speed-menu-caret icons (`TOGGLE_ICONS`) are minimal hand-drawn stroke glyphs instead, built by `createStrokeIcon` rather than picked from that set, since a 24×24 stroke icon reads more cleanly at that size than a scaled-down filled glyph and needs no external attribution.
+// Icon path data (`INSTRUMENT_ICONS`, `AUDIO_ICONS`) is taken from the game-icons.net set by Delapouite, Caro Asercion, Zajkonur and Skoll, licensed CC BY 3.0 (https://creativecommons.org/licenses/by/3.0/). The toggle-button and speed-menu-caret icons (`TOGGLE_ICONS`) are taken from Tabler Icons (https://tabler.io), MIT licensed, built through the same `createStrokeIcon` helper since that set's 24×24 outline glyphs already match its viewBox, stroke width and round caps/joins.
 //
 // The tab list page marks tabs that have a render (`hasRender`, added server-side) with a small icon after the title: the Dockerfile patch gives the title element a `has-render` class instead of appending a plain emoji, and the CSS here paints a `::after` pseudo-element masked to `AUDIO_ICONS.file`'s own path data through a data-URI (`maskUrl`), since a stylesheet has no other way to reach that path data.
 //
@@ -28,7 +28,7 @@
 //
 // A double-click resets the knob to 100% for mouse users, but touch screens do not reliably synthesize `dblclick` from two taps, so the knob also recognizes its own double-tap: two `pointerdown` events within 300ms and 10px of each other, with no drag in between, reset the value the same way. `setPointerCapture` is wrapped in try/catch since synthetic pointer events (as used in tests) throw on it.
 //
-// The Audio button gets an icon and a text label mirroring the current source (Synth / Backing / YouTube / Muted / the render or upload filename), read off the Vue component instance's `currentAudio` field rather than scraped from the DOM, since the button itself carries no indication of which source is active; the component instance is found once by walking the app's internal vnode tree (there is no public API for it) and cached, re-found only if the cached reference stops resolving to a live component. The track sheet reads the same `currentAudio` field to dim the Solo/Mute chips and mark `.track-list` with `data-external-audio` whenever the source isn't the synth, since those controls have no audible effect otherwise.
+// The Audio button gets an icon and a text label mirroring the current source (Synth / Backing / YouTube / Muted / the render or upload filename), read off the Vue component instance's `currentAudio` field rather than scraped from the DOM, since the button itself carries no indication of which source is active; the component instance is found once by walking the app's internal vnode tree (there is no public API for it) and cached, re-found only if the cached reference stops resolving to a live component. The track sheet reads the same `currentAudio` field to dim the Solo/Mute chips and mark `.track-list` with `data-external-audio` whenever the source isn't the synth, since those controls have no audible effect otherwise; in that state the Clear solo button is swapped for an `.external-audio-notice` explaining why, both toggled together in `syncTrackRowStates`.
 //
 // The tab page's own scoped stylesheet is a separate chunk that Vue's router lazy-loads only once that route mounts, so it lands in `<head>` after this script's own `<style>` element (inserted at the very first tick, before navigation); at equal CSS specificity the later stylesheet wins, which flips several of the sheet-position overrides below back to upstream's desktop layout. Every tick re-appends this script's `<style>` element to the end of `<head>` if something has been added after it, which keeps it winning ties against that chunk (and any other stylesheet loaded later) without inflating selectors with specificity hacks.
 //
@@ -61,10 +61,12 @@
   }
 
   const TOGGLE_ICONS = {
-    loop: "M16.9 7.1 A7 7 0 1 1 7.1 7.1 M7.1 11.1 L7.1 7.1 L3.1 7.1",
-    countin: "M6 3 H18 L12 12 L18 21 H6 L12 12 Z",
-    metronome: "M12 3 L19 20 H5 Z M12 20 L14 8 M10.4 13.6 H15.2",
-    caret: "M6 15 L12 9 L18 15",
+    loop: "M4 12v-3a3 3 0 0 1 3 -3h13m-3 -3l3 3l-3 3 M20 12v3a3 3 0 0 1 -3 3h-13m3 3l-3 -3l3 -3",
+    countin:
+      "M6.5 7h11 M6.5 17h11 M6 20v-2a6 6 0 1 1 12 0v2a1 1 0 0 1 -1 1h-10a1 1 0 0 1 -1 -1 M6 4v2a6 6 0 1 0 12 0v-2a1 1 0 0 0 -1 -1h-10a1 1 0 0 0 -1 1",
+    metronome:
+      "M14.153 8.188l-.72 -3.236a2.493 2.493 0 0 0 -4.867 0l-3.025 13.614a2 2 0 0 0 1.952 2.434h7.014a2 2 0 0 0 1.952 -2.434l-.524 -2.357m-4.935 1.791l9 -13 M19 5a1 1 0 1 0 2 0a1 1 0 1 0 -2 0",
+    caret: "M6 15l6 -6l6 6",
   }
 
   function maskUrl(pathData) {
@@ -423,6 +425,16 @@
 	border-radius: 6px;
 }
 .toolbar .track-list .list-header .clear-solo-btn[hidden] {
+	display: none;
+}
+.toolbar .track-list .list-header .external-audio-notice {
+	float: left;
+	height: 34px;
+	line-height: 34px;
+	font-size: 13px;
+	color: #adb5bd;
+}
+.toolbar .track-list .list-header .external-audio-notice[hidden] {
 	display: none;
 }
 @media (max-width: 640px) {
@@ -1203,6 +1215,18 @@
     return button
   }
 
+  function ensureExternalAudioNotice() {
+    const header = document.querySelector(".toolbar .track-list .list-header")
+    if (!header) return null
+    const existing = header.querySelector(".external-audio-notice")
+    if (existing) return existing
+    const notice = document.createElement("span")
+    notice.className = "external-audio-notice"
+    notice.textContent = "Cannot control tracks of rendered audio"
+    header.insertBefore(notice, header.firstChild)
+    return notice
+  }
+
   function syncTrackRowStates() {
     document
       .querySelectorAll(".toolbar .track-list .track.item")
@@ -1213,8 +1237,14 @@
         if (mutedTracks.has(trackIndex)) row.dataset.mute = "1"
         else delete row.dataset.mute
       })
+    const trackList = document.querySelector(".toolbar .track-list")
+    const isExternal = Boolean(
+      trackList && trackList.dataset.externalAudio === "1",
+    )
     const clearButton = ensureClearSoloButton()
-    if (clearButton) clearButton.hidden = soloTracks.size < 2
+    if (clearButton) clearButton.hidden = isExternal || soloTracks.size < 2
+    const notice = ensureExternalAudioNotice()
+    if (notice) notice.hidden = !isExternal
   }
 
   function syncTrackListAudioState() {
@@ -1233,6 +1263,7 @@
           button.title = "Solo/Mute work with the Synth audio source"
         else button.removeAttribute("title")
       })
+    syncTrackRowStates()
   }
 
   function enhanceLists() {
