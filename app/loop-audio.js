@@ -8,7 +8,6 @@
 // worklet while it is engaged. Variable-rate time-stretching (WSOLA) is implemented in
 // loop-audio-worklet.js; the debug object is window.__loopAudio below. At rate 1 the worklet is a
 // plain passthrough.
-// alphaTab.PlayerMode.EnabledExternalMedia
 //
 // Module state, grouped below: the AudioContext/AudioWorkletNode engine itself; the decoded
 // backing-track buffer (sample rate, frame count, cache key, and decode/size stats kept for a

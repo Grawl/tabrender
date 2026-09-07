@@ -11,8 +11,13 @@
 #     selection for touch screens (the upstream selection handles are mouse-drag only);
 #  7. loop-fix.js: restarts a looped playback range correctly with an external audio file (alphaTab
 #     seeks one bar late and pauses there);
-#  8. loop-audio.js + loop-audio-worklet.js: a gapless, pitch-preserving loop engine that intercepts alphaTab's external-media output handler and drives play/pause/seek/rate through an AudioWorkletNode fed with the render.mp3 backing track decoded to PCM (an equal-power crossfade at the loop seam at normal speed, WSOLA time-stretching below it), engaging only once that backing track has been decoded for the audio element's current source and its duration matches the element's duration to the millisecond, and otherwise falling back to the plain <audio> element and loop-fix.js's restart patch — e.g. before the decode finishes, for non-render sources such as YouTube, or if decoding fails.
-#  9. adds a `Cache-Control: private, max-age=600` response header to the tab audio/download endpoint so the browser caches the (large, immutable-once-rendered) render.mp3 file instead of re-fetching it on every seek/reload.
+#  8. loop-audio.js + loop-audio-worklet.js: a gapless, pitch-preserving loop engine. It intercepts
+#     alphaTab's external-media output handler and plays the decoded render.mp3 through an
+#     AudioWorklet (crossfaded seam at normal speed, WSOLA time-stretch below it). It engages once the
+#     current source is decoded and falls back to the <audio> element (and loop-fix.js) otherwise:
+#     YouTube audio, decode failure, tabs longer than 10 minutes;
+#  9. Cache-Control (10 min) on the tab audio endpoint, so the engine's fetch reuses the element's
+#     download of render.mp3.
 # BASE (build arg, e.g. /band-a) re-bases the SPA under a sub-path: API base, router history base, socket.io
 # path, better-auth base, soundfont URL and index.html asset links. nginx strips the prefix (deploy/tabs.conf).
 # The build fails if the upstream code changed and an anchor is gone — re-check the patches then.
