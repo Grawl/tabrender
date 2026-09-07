@@ -1,9 +1,8 @@
 // AudioWorkletProcessor for range/loop playback of a pre-decoded PCM buffer.
 //
-// This is the passthrough stage: it plays the buffer back at rate 1 only, reading one sample per
-// output frame, with optional range looping. Variable-rate WSOLA time-stretching (for the tempo
-// slider) is added in a later commit; the `rate` field is already accepted and stored here so that
-// commit only has to change how `pos` advances, not the message protocol.
+// At rate 1 this plays the buffer back sample-for-sample, with an equal-power crossfade at the
+// loop seam so range looping is gapless. Below rate 0.999 it switches to WSOLA time-stretching so
+// slowed-down playback preserves pitch while still looping gapless through the same source range.
 class LoopAudioProcessor extends AudioWorkletProcessor {
   constructor() {
     super()
@@ -18,6 +17,30 @@ class LoopAudioProcessor extends AudioWorkletProcessor {
     this.looping = false
     this.processCount = 0
 
+    // Loop-seam crossfade (rate === 1 path).
+    this.seamFrames = 0
+    this.inSeam = false
+    this.seamIndex = 0
+
+    // WSOLA time-stretching (rate < 0.999 path).
+    this.seqFrames = 0
+    this.ovlFrames = 0
+    this.seekFrames = 0
+    this.analysisHop = 0
+    this.sourcePointer = 0
+    this.segmentStartPointer = 0
+    this.framesSinceSegmentStart = 0
+    this.tailValid = false
+    this.tailLeft = null
+    this.tailRight = null
+    this.tailMono = null
+    this.fifoLeft = null
+    this.fifoRight = null
+    this.fifoCapacity = 0
+    this.fifoReadIndex = 0
+    this.fifoWriteIndex = 0
+    this.fifoCount = 0
+
     this.port.onmessage = (event) => {
       const { data } = event
       switch (data.type) {
@@ -25,8 +48,26 @@ class LoopAudioProcessor extends AudioWorkletProcessor {
           this.chL = data.chL
           this.chR = data.chR
           this.sampleRate = data.sampleRate
+          this.seamFrames = Math.round(0.003 * this.sampleRate)
+          this.seqFrames = Math.round(1764 * (this.sampleRate / 44100))
+          this.ovlFrames = Math.round(529 * (this.sampleRate / 44100))
+          this.seekFrames = Math.round(353 * (this.sampleRate / 44100))
+          this.analysisHop = this.seqFrames * this.rate
+          this.tailLeft = new Float32Array(this.ovlFrames)
+          this.tailRight = new Float32Array(this.ovlFrames)
+          this.tailMono = new Float32Array(this.ovlFrames)
+          this.fifoCapacity = this.seqFrames * 3
+          this.fifoLeft = new Float32Array(this.fifoCapacity)
+          this.fifoRight = new Float32Array(this.fifoCapacity)
+          this.fifoReadIndex = 0
+          this.fifoWriteIndex = 0
+          this.fifoCount = 0
+          this.tailValid = false
           this.pos = 0
           if (this.L1 === 0 && this.chL.length > 0) this.L1 = this.chL.length
+          this.sourcePointer = this.pos
+          this.segmentStartPointer = this.sourcePointer
+          this.framesSinceSegmentStart = 0
           break
         case "play":
           this.playing = true
@@ -36,14 +77,28 @@ class LoopAudioProcessor extends AudioWorkletProcessor {
           break
         case "seek":
           this.pos = data.frame
+          this.inSeam = false
+          this.sourcePointer = data.frame
+          this.tailValid = false
+          this.fifoReadIndex = 0
+          this.fifoWriteIndex = 0
+          this.fifoCount = 0
+          this.framesSinceSegmentStart = 0
+          this.segmentStartPointer = this.sourcePointer
           break
         case "rate":
           this.rate = data.rate
+          this.analysisHop = this.seqFrames * this.rate
+          this.tailValid = false
+          this.fifoReadIndex = 0
+          this.fifoWriteIndex = 0
+          this.fifoCount = 0
           break
         case "range":
           this.L0 = data.L0
           this.L1 = data.L1
           this.looping = data.looping
+          this.inSeam = false
           break
       }
     }
@@ -63,6 +118,133 @@ class LoopAudioProcessor extends AudioWorkletProcessor {
     return buffer[clamped] / 32768
   }
 
+  // Non-wrapping, non-clamping sample read. Callers must have already proven the index is in
+  // bounds; never call this speculatively.
+  rawAt(frameIndex, ch) {
+    const buffer = ch === 0 ? this.chL : this.chR
+    return buffer[frameIndex] / 32768
+  }
+
+  pushFifo(sampleLeft, sampleRight) {
+    this.fifoLeft[this.fifoWriteIndex] = sampleLeft
+    this.fifoRight[this.fifoWriteIndex] = sampleRight
+    this.fifoWriteIndex = (this.fifoWriteIndex + 1) % this.fifoCapacity
+    this.fifoCount++
+  }
+
+  captureTail(startIndex) {
+    for (let index = 0; index < this.ovlFrames; index++) {
+      this.tailLeft[index] = this.srcAt(startIndex + index, 0)
+      this.tailRight[index] = this.srcAt(startIndex + index, 1)
+      this.tailMono[index] = (this.tailLeft[index] + this.tailRight[index]) / 2
+    }
+  }
+
+  correlationScore(base, offset) {
+    let numerator = 0
+    let denominator = 0
+    for (let index = 0; index < this.ovlFrames; index++) {
+      const candidate =
+        (this.srcAt(base + offset + index, 0) +
+          this.srcAt(base + offset + index, 1)) /
+        2
+      numerator += this.tailMono[index] * candidate
+      denominator += candidate * candidate
+    }
+    return numerator / Math.sqrt(denominator + 1e-9)
+  }
+
+  searchBestOffset(base) {
+    let bestOffset = 0
+    let bestScore = -Infinity
+    for (
+      let offset = -this.seekFrames;
+      offset <= this.seekFrames;
+      offset += 4
+    ) {
+      const score = this.correlationScore(base, offset)
+      if (score > bestScore) {
+        bestScore = score
+        bestOffset = offset
+      }
+    }
+    const coarseBest = bestOffset
+    for (let offset = coarseBest - 3; offset <= coarseBest + 3; offset++) {
+      if (offset < -this.seekFrames || offset > this.seekFrames) continue
+      const score = this.correlationScore(base, offset)
+      if (score > bestScore) {
+        bestScore = score
+        bestOffset = offset
+      }
+    }
+    return bestOffset
+  }
+
+  // Appends exactly `seqFrames` frames to the FIFO.
+  runWsolaIteration() {
+    const base = Math.round(this.sourcePointer)
+    if (!this.tailValid) {
+      for (let index = 0; index < this.seqFrames; index++) {
+        this.pushFifo(this.srcAt(base + index, 0), this.srcAt(base + index, 1))
+      }
+      this.captureTail(base + this.seqFrames)
+      this.tailValid = true
+    } else {
+      const bestOffset = this.searchBestOffset(base)
+      for (let index = 0; index < this.ovlFrames; index++) {
+        const weight = 0.5 - 0.5 * Math.cos((Math.PI * index) / this.ovlFrames)
+        const sourceIndex = base + bestOffset + index
+        const candidateLeft = this.srcAt(sourceIndex, 0)
+        const candidateRight = this.srcAt(sourceIndex, 1)
+        this.pushFifo(
+          this.tailLeft[index] * (1 - weight) + candidateLeft * weight,
+          this.tailRight[index] * (1 - weight) + candidateRight * weight,
+        )
+      }
+      for (let index = 0; index < this.seqFrames - this.ovlFrames; index++) {
+        const sourceIndex = base + bestOffset + this.ovlFrames + index
+        this.pushFifo(this.srcAt(sourceIndex, 0), this.srcAt(sourceIndex, 1))
+      }
+      this.captureTail(base + bestOffset + this.seqFrames)
+    }
+    this.segmentStartPointer = this.sourcePointer
+    this.framesSinceSegmentStart = 0
+    this.sourcePointer += this.analysisHop
+  }
+
+  wrapPosition(position) {
+    if (!this.looping) return position
+    const length = this.L1 - this.L0
+    if (length <= 0) return position
+    return this.L0 + ((((position - this.L0) % length) + length) % length)
+  }
+
+  fillWsolaOutput(left, right, blockSize) {
+    while (this.fifoCount < blockSize && this.playing) {
+      this.runWsolaIteration()
+    }
+    for (let frame = 0; frame < blockSize; frame++) {
+      if (!this.playing || this.fifoCount === 0) {
+        left[frame] = 0
+        right[frame] = 0
+        continue
+      }
+      left[frame] = this.fifoLeft[this.fifoReadIndex]
+      right[frame] = this.fifoRight[this.fifoReadIndex]
+      this.fifoReadIndex = (this.fifoReadIndex + 1) % this.fifoCapacity
+      this.fifoCount--
+      this.framesSinceSegmentStart++
+      this.pos = this.wrapPosition(
+        this.segmentStartPointer + this.framesSinceSegmentStart * this.rate,
+      )
+      if (!this.looping && this.L1 > 0 && this.pos >= this.L1) {
+        this.port.postMessage({ type: "ended", frame: this.L1 })
+        this.playing = false
+        this.fifoCount = 0
+      }
+    }
+  }
+
   process(inputs, outputs) {
     const output = outputs[0]
     const left = output[0]
@@ -76,19 +258,50 @@ class LoopAudioProcessor extends AudioWorkletProcessor {
 
     this.processCount++
 
-    for (let frame = 0; frame < left.length; frame++) {
-      if (!this.looping && this.L1 > 0 && this.pos >= this.L1) {
-        this.port.postMessage({ type: "ended", frame: this.L1 })
-        this.playing = false
-        left.fill(0, frame)
-        right.fill(0, frame)
-        return true
+    if (this.rate < 0.999) {
+      this.fillWsolaOutput(left, right, left.length)
+    } else {
+      for (let frame = 0; frame < left.length; frame++) {
+        if (!this.looping && this.L1 > 0 && this.pos >= this.L1) {
+          this.port.postMessage({ type: "ended", frame: this.L1 })
+          this.playing = false
+          left.fill(0, frame)
+          right.fill(0, frame)
+          return true
+        }
+
+        if (this.looping && !this.inSeam && this.pos >= this.L1) {
+          const seamEligible = this.L1 + this.seamFrames <= this.chL.length
+          if (seamEligible) {
+            this.inSeam = true
+            this.seamIndex = 0
+          } else {
+            this.pos = this.L0
+          }
+        }
+
+        if (this.inSeam) {
+          const weight =
+            0.5 - 0.5 * Math.cos((Math.PI * this.seamIndex) / this.seamFrames)
+          left[frame] =
+            this.rawAt(this.L1 + this.seamIndex, 0) * (1 - weight) +
+            this.rawAt(this.L0 + this.seamIndex, 0) * weight
+          right[frame] =
+            this.rawAt(this.L1 + this.seamIndex, 1) * (1 - weight) +
+            this.rawAt(this.L0 + this.seamIndex, 1) * weight
+          this.seamIndex++
+          if (this.seamIndex >= this.seamFrames) {
+            this.inSeam = false
+            this.pos = this.L0 + this.seamFrames
+          }
+          continue
+        }
+
+        const index = Math.floor(this.pos)
+        left[frame] = this.srcAt(index, 0)
+        right[frame] = this.srcAt(index, 1)
+        this.pos++
       }
-      // TODO(loop-audio): rate !== 1 goes through WSOLA, added in a later commit
-      const index = Math.floor(this.pos)
-      left[frame] = this.srcAt(index, 0)
-      right[frame] = this.srcAt(index, 1)
-      this.pos++
     }
 
     if (this.playing && this.processCount % 8 === 0) {
