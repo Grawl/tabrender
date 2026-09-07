@@ -3,6 +3,23 @@
 // At rate 1 this plays the buffer back sample-for-sample, with an equal-power crossfade at the
 // loop seam so range looping is gapless. Below rate 0.999 it switches to WSOLA time-stretching so
 // slowed-down playback preserves pitch while still looping gapless through the same source range.
+// The WSOLA sequence/overlap/seek window sizes (ms) are tunable at runtime via a "tune" message
+// (see loop-audio.js's `?stretch=seq,ovl,seek` URL param and `window.__loopAudio.tune`).
+function isValidStretch(seqMs, ovlMs, seekMs) {
+  return (
+    Number.isFinite(seqMs) &&
+    Number.isFinite(ovlMs) &&
+    Number.isFinite(seekMs) &&
+    seqMs >= 10 &&
+    seqMs <= 100 &&
+    ovlMs >= 2 &&
+    ovlMs <= 40 &&
+    ovlMs < seqMs / 2 &&
+    seekMs >= 1 &&
+    seekMs <= 30
+  )
+}
+
 class LoopAudioProcessor extends AudioWorkletProcessor {
   constructor() {
     super()
@@ -23,6 +40,9 @@ class LoopAudioProcessor extends AudioWorkletProcessor {
     this.seamIndex = 0
 
     // WSOLA time-stretching (rate < 0.999 path).
+    this.seqMs = 40
+    this.ovlMs = 12
+    this.seekMs = 8
     this.seqFrames = 0
     this.ovlFrames = 0
     this.seekFrames = 0
@@ -49,25 +69,9 @@ class LoopAudioProcessor extends AudioWorkletProcessor {
           this.chR = data.chR
           this.sampleRate = data.sampleRate
           this.seamFrames = Math.round(0.003 * this.sampleRate)
-          this.seqFrames = Math.round(1764 * (this.sampleRate / 44100))
-          this.ovlFrames = Math.round(529 * (this.sampleRate / 44100))
-          this.seekFrames = Math.round(353 * (this.sampleRate / 44100))
-          this.analysisHop = this.seqFrames * this.rate
-          this.tailLeft = new Float32Array(this.ovlFrames)
-          this.tailRight = new Float32Array(this.ovlFrames)
-          this.tailMono = new Float32Array(this.ovlFrames)
-          this.fifoCapacity = this.seqFrames * 3
-          this.fifoLeft = new Float32Array(this.fifoCapacity)
-          this.fifoRight = new Float32Array(this.fifoCapacity)
-          this.fifoReadIndex = 0
-          this.fifoWriteIndex = 0
-          this.fifoCount = 0
-          this.tailValid = false
           this.pos = 0
           if (this.L1 === 0 && this.chL.length > 0) this.L1 = this.chL.length
-          this.sourcePointer = this.pos
-          this.segmentStartPointer = this.sourcePointer
-          this.framesSinceSegmentStart = 0
+          this.applyStretchParams()
           break
         case "play":
           this.playing = true
@@ -78,13 +82,7 @@ class LoopAudioProcessor extends AudioWorkletProcessor {
         case "seek":
           this.pos = data.frame
           this.inSeam = false
-          this.sourcePointer = data.frame
-          this.tailValid = false
-          this.fifoReadIndex = 0
-          this.fifoWriteIndex = 0
-          this.fifoCount = 0
-          this.framesSinceSegmentStart = 0
-          this.segmentStartPointer = this.sourcePointer
+          this.resetStretcher(data.frame)
           break
         case "rate":
           this.rate = data.rate
@@ -100,8 +98,41 @@ class LoopAudioProcessor extends AudioWorkletProcessor {
           this.looping = data.looping
           this.inSeam = false
           break
+        case "tune": {
+          if (!isValidStretch(data.seq, data.ovl, data.seek)) break
+          this.seqMs = data.seq
+          this.ovlMs = data.ovl
+          this.seekMs = data.seek
+          this.applyStretchParams()
+          break
+        }
       }
     }
+  }
+
+  resetStretcher(anchorFrame) {
+    this.tailValid = false
+    this.fifoReadIndex = 0
+    this.fifoWriteIndex = 0
+    this.fifoCount = 0
+    this.sourcePointer = anchorFrame
+    this.segmentStartPointer = anchorFrame
+    this.framesSinceSegmentStart = 0
+  }
+
+  applyStretchParams() {
+    if (this.sampleRate === 0) return
+    this.seqFrames = Math.round((this.seqMs / 1000) * this.sampleRate)
+    this.ovlFrames = Math.round((this.ovlMs / 1000) * this.sampleRate)
+    this.seekFrames = Math.round((this.seekMs / 1000) * this.sampleRate)
+    this.analysisHop = this.seqFrames * this.rate
+    this.tailLeft = new Float32Array(this.ovlFrames)
+    this.tailRight = new Float32Array(this.ovlFrames)
+    this.tailMono = new Float32Array(this.ovlFrames)
+    this.fifoCapacity = this.seqFrames * 3
+    this.fifoLeft = new Float32Array(this.fifoCapacity)
+    this.fifoRight = new Float32Array(this.fifoCapacity)
+    this.resetStretcher(this.pos)
   }
 
   srcAt(frameIndex, ch) {
