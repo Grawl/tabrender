@@ -6,7 +6,11 @@
 #     cursor speed of the last sync point, so with one point the cursor drifted after every tempo change;
 #  4. when the audio resumes after buffering ("playing" event) the cursor is snapped back to the exact position:
 #     alphaTab only animates towards the next beat and never corrects an offset until the next staff line;
-#  5. an optional analytics tracker tag in index.html (ANALYTICS_SRC / ANALYTICS_ID build args).
+#  5. an optional analytics tracker tag in index.html (ANALYTICS_SRC / ANALYTICS_ID build args);
+#  6. a touch-select.js script tag in index.html, adding two-finger long-press playback-range
+#     selection for touch screens (the upstream selection handles are mouse-drag only);
+#  7. loop-fix.js: restarts a looped playback range correctly with an external audio file (alphaTab
+#     seeks one bar late and pauses there).
 # BASE (build arg, e.g. /band-a) re-bases the SPA under a sub-path: API base, router history base, socket.io
 # path, better-auth base, soundfont URL and index.html asset links. nginx strips the prefix (deploy/tabs.conf).
 # The build fails if the upstream code changed and an anchor is gone — re-check the patches then.
@@ -17,6 +21,8 @@ ARG BASE=""
 ARG ANALYTICS_SRC=""
 ARG ANALYTICS_ID=""
 USER root
+COPY --chown=deno:deno touch-select.js /app/dist/touch-select.js
+COPY --chown=deno:deno loop-fix.js /app/dist/loop-fix.js
 RUN set -eu; cd /app/dist/assets; f=$(ls Tab-*.js); \
     grep -q 'this.currentAudio=this.getConfig("audio","synth")' "$f"; \
     sed -i 's#this.currentAudio=this.getConfig("audio","synth")#this.currentAudio=this.getConfig("audio",this.audioList.some(o=>o.filename==="render.mp3")?"audio-render.mp3":"synth")#' "$f"; \
@@ -48,6 +54,12 @@ RUN set -eu; cd /app/dist/assets; f=$(ls Tab-*.js); \
       grep -q "$BASE/assets/" "$h"; \
       for x in "$f" "$i"; do rm -f "$x.gz"; gzip -k -9 "$x"; chown deno:deno "$x" "$x.gz"; done; \
     fi; \
+    h=/app/dist/index.html; \
+    grep -q '</head>' "$h"; \
+    sed -i "s#</head>#<script defer src=\"$BASE/touch-select.js\"></script></head>#" "$h"; \
+    grep -q 'touch-select.js' "$h"; \
+    sed -i "s#</head>#<script defer src=\"$BASE/loop-fix.js\"></script></head>#" "$h"; \
+    grep -q 'loop-fix.js' "$h"; \
     if [ -n "$ANALYTICS_ID" ]; then \
       h=/app/dist/index.html; \
       sed -i "s#</head>#<script defer src=\"$ANALYTICS_SRC\" data-website-id=\"$ANALYTICS_ID\"></script></head>#" "$h"; \
