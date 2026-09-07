@@ -10,7 +10,8 @@
 #  6. a touch-select.js script tag in index.html, adding two-finger long-press playback-range
 #     selection for touch screens (the upstream selection handles are mouse-drag only);
 #  7. loop-fix.js: restarts a looped playback range correctly with an external audio file (alphaTab
-#     seeks one bar late and pauses there).
+#     seeks one bar late and pauses there);
+#  8. loop-audio.js + loop-audio-worklet.js: a gapless, pitch-preserving loop engine that intercepts alphaTab's external-media output handler and drives play/pause/seek/rate through an AudioWorkletNode fed with the render.mp3 backing track decoded to PCM (an equal-power crossfade at the loop seam at normal speed, WSOLA time-stretching below it), engaging only once that backing track has been decoded for the audio element's current source and its duration matches the element's duration to the millisecond, and otherwise falling back to the plain <audio> element and loop-fix.js's restart patch — e.g. before the decode finishes, for non-render sources such as YouTube, or if decoding fails.
 # BASE (build arg, e.g. /band-a) re-bases the SPA under a sub-path: API base, router history base, socket.io
 # path, better-auth base, soundfont URL and index.html asset links. nginx strips the prefix (deploy/tabs.conf).
 # The build fails if the upstream code changed and an anchor is gone — re-check the patches then.
@@ -23,6 +24,8 @@ ARG ANALYTICS_ID=""
 USER root
 COPY --chown=deno:deno touch-select.js /app/dist/touch-select.js
 COPY --chown=deno:deno loop-fix.js /app/dist/loop-fix.js
+COPY --chown=deno:deno loop-audio.js /app/dist/loop-audio.js
+COPY --chown=deno:deno loop-audio-worklet.js /app/dist/loop-audio-worklet.js
 RUN set -eu; cd /app/dist/assets; f=$(ls Tab-*.js); \
     grep -q 'this.currentAudio=this.getConfig("audio","synth")' "$f"; \
     sed -i 's#this.currentAudio=this.getConfig("audio","synth")#this.currentAudio=this.getConfig("audio",this.audioList.some(o=>o.filename==="render.mp3")?"audio-render.mp3":"synth")#' "$f"; \
@@ -60,6 +63,8 @@ RUN set -eu; cd /app/dist/assets; f=$(ls Tab-*.js); \
     grep -q 'touch-select.js' "$h"; \
     sed -i "s#</head>#<script defer src=\"$BASE/loop-fix.js\"></script></head>#" "$h"; \
     grep -q 'loop-fix.js' "$h"; \
+    sed -i "s#</head>#<script defer src=\"$BASE/loop-audio.js\"></script></head>#" "$h"; \
+    grep -q 'loop-audio.js' "$h"; \
     if [ -n "$ANALYTICS_ID" ]; then \
       h=/app/dist/index.html; \
       sed -i "s#</head>#<script defer src=\"$ANALYTICS_SRC\" data-website-id=\"$ANALYTICS_ID\"></script></head>#" "$h"; \
