@@ -240,6 +240,8 @@ class LoopAudioProcessor extends AudioWorkletProcessor {
       if (!this.looping && this.L1 > 0 && this.pos >= this.L1) {
         this.port.postMessage({ type: "ended", frame: this.L1 })
         this.playing = false
+        this.fifoReadIndex = 0
+        this.fifoWriteIndex = 0
         this.fifoCount = 0
       }
     }
