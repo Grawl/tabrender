@@ -20,16 +20,11 @@
       if (
         !api.isLooping ||
         !range ||
-        api.settings.player.playerMode !==
-          EXTERNAL_MEDIA
+        api.settings.player.playerMode !== EXTERNAL_MEDIA
       )
         return
       setTimeout(() => {
-        if (
-          window.api !==
-          api
-        )
-          return
+        if (window.api !== api) return
         api.tickPosition = range.startTick
         api.play()
       }, 0)

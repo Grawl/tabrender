@@ -51,17 +51,14 @@
 
   function getContext() {
     const handles = document.querySelector(".at-selection-handles")
-    const container =
-      handles &&
-      handles.parentElement
+    const container = handles && handles.parentElement
     const api = window.api
     if (
       !container ||
       !api ||
       !api.boundsLookup ||
       !api.container ||
-      api.container.element !==
-        container
+      api.container.element !== container
     ) {
       return null
     }
