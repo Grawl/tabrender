@@ -210,6 +210,7 @@
       set playbackRate(value) {
         rate = value
         if (node) node.port.postMessage({ type: "rate", rate: value })
+        raw.playbackRate = value
       },
       seekTo(ms) {
         if (engineActive && Math.abs(ms - lastReportedMs) < 25) return
@@ -238,6 +239,7 @@
             lastFrame !== null ? lastFrame : el.currentTime * sampleRate
           el.currentTime = frame / sampleRate
         }
+        raw.pause()
         engineActive = false
       },
     }
@@ -248,7 +250,7 @@
       Object.getPrototypeOf(output),
       "handler",
     )
-    let raw = null
+    let raw = proto.get ? proto.get.call(output) : null
     Object.defineProperty(output, "handler", {
       configurable: true,
       get() {
@@ -260,6 +262,10 @@
         proto.set.call(output, makeProxyHandler(raw))
       },
     })
+    if (raw) {
+      lastRawHandler = raw
+      proto.set.call(output, makeProxyHandler(raw))
+    }
 
     currentOutput = output
     currentProtoUpdatePosition = Object.getPrototypeOf(output).updatePosition
