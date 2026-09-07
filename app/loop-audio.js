@@ -5,19 +5,19 @@
 // the element's seek+play round trip (see loop-fix.js for the symptom this replaces). This file
 // wires the plumbing only: decoding render.mp3 into PCM, feeding it to loop-audio-worklet.js, and
 // intercepting alphaTab's external-media output handler so play/pause/seek/volume/rate go to the
-// worklet while it is engaged. Variable-rate time-stretching (WSOLA) and the debug object are
-// added in later commits; at rate 1 the worklet is a plain passthrough.
+// worklet while it is engaged. Variable-rate time-stretching (WSOLA) is implemented in
+// loop-audio-worklet.js; the debug object is window.__loopAudio below. At rate 1 the worklet is a
+// plain passthrough.
 // alphaTab.PlayerMode.EnabledExternalMedia
 //
 // Module state, grouped below: the AudioContext/AudioWorkletNode engine itself; the decoded
 // backing-track buffer (sample rate, frame count, cache key, and decode/size stats kept for a
 // later commit's debug object); the loop range mirrored from alphaTab and pushed to the worklet;
 // position-reporting bookkeeping; the watched <audio class="player"> element; and the watchdog's
-// "last seen api/output/handler" trackers, which only reinstall interception on a genuine change
-// (comparing against the raw value tracked in `lastRawHandler`, not read back through the getter
-// this file installs, which would always match). oxfmt (0.2.0) hoists any comment placed directly
-// before a variable declaration or as the sole content of a block out of its enclosing function,
-// so this file keeps explanatory comments here in the header instead of inline.
+// "last seen api/output" trackers, which only reinstall interception on a genuine change. oxfmt
+// (0.2.0) hoists any comment placed directly before a variable declaration or as the sole content
+// of a block out of its enclosing function, so this file keeps explanatory comments here in the
+// header instead of inline.
 ;(function () {
   const EXTERNAL_MEDIA = 4
   let ctx = null
@@ -45,7 +45,6 @@
   let lastSeenSrc = null
   let lastSeenApi = null
   let lastSeenOutput = null
-  let lastRawHandler = null
   let rangeSubscribedApi = null
   let currentOutput = null
   let currentProtoUpdatePosition = null
@@ -256,16 +255,14 @@
     Object.defineProperty(output, "handler", {
       configurable: true,
       get() {
-        return raw
+        return proto.get.call(output)
       },
       set(value) {
         raw = value
-        lastRawHandler = value
         proto.set.call(output, makeProxyHandler(raw))
       },
     })
     if (raw) {
-      lastRawHandler = raw
       proto.set.call(output, makeProxyHandler(raw))
     }
 
@@ -339,11 +336,7 @@
     const output = api.player && api.player.output
     if (!output) return
 
-    if (
-      api !== lastSeenApi ||
-      output !== lastSeenOutput ||
-      output.handler !== lastRawHandler
-    ) {
+    if (api !== lastSeenApi || output !== lastSeenOutput) {
       interceptOutput(output)
       lastSeenApi = api
       lastSeenOutput = output
