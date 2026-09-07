@@ -47,6 +47,44 @@
   let rangeSubscribedApi = null
   let currentOutput = null
   let currentProtoUpdatePosition = null
+  let stretchSeq = 40
+  let stretchOvl = 12
+  let stretchSeek = 8
+
+  function validStretch(seq, ovl, seek) {
+    return (
+      Number.isFinite(seq) &&
+      Number.isFinite(ovl) &&
+      Number.isFinite(seek) &&
+      seq >= 10 &&
+      seq <= 100 &&
+      ovl >= 2 &&
+      ovl <= 40 &&
+      ovl < seq / 2 &&
+      seek >= 1 &&
+      seek <= 30
+    )
+  }
+
+  function applyStretch(seq, ovl, seek) {
+    if (!validStretch(seq, ovl, seek)) return false
+    stretchSeq = seq
+    stretchOvl = ovl
+    stretchSeek = seek
+    if (node) node.port.postMessage({ type: "tune", seq, ovl, seek })
+    return true
+  }
+
+  function readStretchParam() {
+    const raw = new URLSearchParams(location.search).get("stretch")
+    if (!raw) return
+    const parts = raw.split(",").map(Number)
+    if (parts.length !== 3 || !validStretch(parts[0], parts[1], parts[2])) {
+      console.warn("loop-audio: ignoring invalid ?stretch param", raw)
+      return
+    }
+    applyStretch(parts[0], parts[1], parts[2])
+  }
 
   function floatToInt16(sample) {
     return Math.max(-32768, Math.min(32767, Math.round(sample * 32768)))
@@ -103,6 +141,12 @@
         gain = ctx.createGain()
         node.connect(gain).connect(ctx.destination)
         node.port.onmessage = handleWorkletMessage
+        node.port.postMessage({
+          type: "tune",
+          seq: stretchSeq,
+          ovl: stretchOvl,
+          seek: stretchSeek,
+        })
       } catch (error) {
         engineAvailable = false
         throw error
@@ -384,5 +428,13 @@
     get bufferMB() {
       return bufferMB
     },
+    get stretch() {
+      return { seq: stretchSeq, ovl: stretchOvl, seek: stretchSeek }
+    },
+    tune(seq, ovl, seek) {
+      return applyStretch(seq, ovl, seek)
+    },
   }
+
+  readStretchParam()
 })()

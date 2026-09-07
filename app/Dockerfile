@@ -15,9 +15,12 @@
 #     alphaTab's external-media output handler and plays the decoded render.mp3 through an
 #     AudioWorklet (crossfaded seam at normal speed, WSOLA time-stretch below it). It engages once the
 #     current source is decoded and falls back to the <audio> element (and loop-fix.js) otherwise:
-#     YouTube audio, decode failure, tabs longer than 10 minutes;
+#     YouTube audio, decode failure, tabs longer than 10 minutes. The WSOLA window sizes are tunable
+#     at runtime via the `?stretch=seq,ovl,seek` URL param (ms) or `window.__loopAudio.tune(...)`;
 #  9. Cache-Control (10 min) on the tab audio endpoint, so the engine's fetch reuses the element's
-#     download of render.mp3.
+#     download of render.mp3;
+#  10. mobile-ui.js: phone layout for the bottom toolbar, wrapping it into two rows and restyling
+#      the Loop/Count in/Metronome buttons as switch-style toggles, below a max-width of 640px.
 # BASE (build arg, e.g. /band-a) re-bases the SPA under a sub-path: API base, router history base, socket.io
 # path, better-auth base, soundfont URL and index.html asset links. nginx strips the prefix (deploy/tabs.conf).
 # The build fails if the upstream code changed and an anchor is gone — re-check the patches then.
@@ -32,6 +35,7 @@ COPY --chown=deno:deno touch-select.js /app/dist/touch-select.js
 COPY --chown=deno:deno loop-fix.js /app/dist/loop-fix.js
 COPY --chown=deno:deno loop-audio.js /app/dist/loop-audio.js
 COPY --chown=deno:deno loop-audio-worklet.js /app/dist/loop-audio-worklet.js
+COPY --chown=deno:deno mobile-ui.js /app/dist/mobile-ui.js
 RUN set -eu; cd /app/dist/assets; f=$(ls Tab-*.js); \
     grep -q 'this.currentAudio=this.getConfig("audio","synth")' "$f"; \
     sed -i 's#this.currentAudio=this.getConfig("audio","synth")#this.currentAudio=this.getConfig("audio",this.audioList.some(o=>o.filename==="render.mp3")?"audio-render.mp3":"synth")#' "$f"; \
@@ -75,6 +79,8 @@ RUN set -eu; cd /app/dist/assets; f=$(ls Tab-*.js); \
     grep -q 'loop-fix.js' "$h"; \
     sed -i "s#</head>#<script defer src=\"$BASE/loop-audio.js\"></script></head>#" "$h"; \
     grep -q 'loop-audio.js' "$h"; \
+    sed -i "s#</head>#<script defer src=\"$BASE/mobile-ui.js\"></script></head>#" "$h"; \
+    grep -q 'mobile-ui.js' "$h"; \
     if [ -n "$ANALYTICS_ID" ]; then \
       h=/app/dist/index.html; \
       sed -i "s#</head>#<script defer src=\"$ANALYTICS_SRC\" data-website-id=\"$ANALYTICS_ID\"></script></head>#" "$h"; \
