@@ -8,6 +8,16 @@
 //
 // Icon path data (`INSTRUMENT_ICONS`) is taken from the game-icons.net set by Delapouite, Caro Asercion, Zajkonur and Skoll, licensed CC BY 3.0 (https://creativecommons.org/licenses/by/3.0/).
 //
+// The track and audio dropdowns (`.track-list.list`, `.audio-list.list`) are Vue `v-if` children of `.toolbar`, torn down and rebuilt from scratch every time they open; `.toolbar` itself has `backdrop-filter`, which makes it the CSS containing block for any `position: fixed` descendant, so a sheet positioned that way would anchor to the toolbar's own box instead of the viewport — this addon keeps upstream's `position: absolute` on `.list` and just widens it to `left:0;right:0;bottom:100%`, which anchors correctly against the toolbar (a viewport-height, viewport-width strip) without fighting that containing-block behaviour; the sheet does not lock body scroll while open, relying on its own `max-height` clamp and `overscroll-behavior: contain` to keep an over-scroll at the top or bottom of the list from bubbling into the page underneath.
+//
+// Each row of the track list gets a small instrument icon and the track's own name from `api.score.tracks` (row position equals track index), applied by a `MutationObserver` on `.toolbar`'s direct children rather than the polling loop used elsewhere in this file, since the whole list subtree is replaced on every open and a timer would either miss it or double up; the icon is inserted as a sibling of `.name`, never inside it, because Vue's own text-patching would wipe out anything placed as a child of that element on its next update.
+//
+// The per-track volume input becomes an SVG dial: drag vertically or use the arrow keys to change it, double-click to reset to 100%; dragging draws locally on every pointer move but only writes through to the upstream input (native setter plus `input`/`change` events, which is what the Vue binding listens for) once per animation frame, and on release. The addon keeps its own last-set-value-per-track map because the upstream input itself is re-created at 100% every time the list is reopened, while the actual gain the synth is using stays wherever it was left; that map is what re-seeds the dial (and the hidden input) on the next open.
+//
+// The Audio button gets an icon and a text label mirroring the current source (Synth / Backing / YouTube / Muted / the render or upload filename), read off the Vue component instance's `currentAudio` field rather than scraped from the DOM, since the button itself carries no indication of which source is active; the component instance is found once by walking the app's internal vnode tree (there is no public API for it) and cached, re-found only if the cached reference stops resolving to a live component.
+//
+// The tab page's own scoped stylesheet is a separate chunk that Vue's router lazy-loads only once that route mounts, so it lands in `<head>` after this script's own `<style>` element (inserted at the very first tick, before navigation); at equal CSS specificity the later stylesheet wins, which flips several of the sheet-position overrides below back to upstream's desktop layout. Every tick re-appends this script's `<style>` element to the end of `<head>` if something has been added after it, which keeps it winning ties against that chunk (and any other stylesheet loaded later) without inflating selectors with specificity hacks.
+//
 // oxfmt (0.2.0) hoists any comment placed directly before a declaration out of its enclosing function, so this file keeps explanatory comments here in the header instead of inline.
 ;(function () {
   const style = document.createElement("style")
@@ -24,6 +34,53 @@
 	vertical-align: middle;
 	margin-right: 6px;
 	flex-shrink: 0;
+}
+.toolbar .list {
+	overscroll-behavior: contain;
+}
+.toolbar .track-list .track .track-row-icon {
+	width: 20px;
+	height: 20px;
+	flex: 0 0 20px;
+	margin-left: 14px;
+}
+.toolbar .track-list .track .list-button.select-percentage {
+	font-size: 0;
+	background: none;
+}
+.toolbar .track-list .track .list-button.select-percentage input {
+	display: none;
+}
+.volume-knob {
+	font-size: 11px;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 1px;
+	width: 52px;
+	touch-action: none;
+	user-select: none;
+	cursor: ns-resize;
+}
+.toolbar .scroll .audio-selector .button {
+	font-size: 0;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	min-width: 96px;
+	justify-content: center;
+}
+.audio-icon {
+	width: 20px;
+	height: 20px;
+	flex: 0 0 20px;
+}
+.audio-label {
+	font-size: 14px;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	max-width: 72px;
 }
 .speed-menu {
 	position: fixed;
@@ -170,6 +227,59 @@
 		left: 8px;
 		right: 8px;
 	}
+	.toolbar .list {
+		position: absolute;
+		left: 0;
+		right: 0;
+		bottom: 100%;
+		width: auto;
+		min-width: 0;
+		max-height: 70vh;
+		max-height: 70dvh;
+		overflow-y: auto;
+		border-radius: 12px 12px 0 0;
+	}
+	.toolbar .list .list-header {
+		padding: 8px 10px;
+	}
+	.toolbar .list .list-header svg.close {
+		width: 28px;
+		height: 28px;
+		padding: 8px;
+		box-sizing: content-box;
+		margin: -4px;
+	}
+	.toolbar .list .item {
+		min-height: 60px;
+		column-gap: 8px;
+	}
+	.toolbar .list .item .name {
+		padding: 10px 0;
+		border-right: 0;
+		font-size: 14px;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.toolbar .audio-list .item .name {
+		padding-left: 12px;
+	}
+	.toolbar .track-list .track .list-button {
+		padding: 0 10px;
+		height: 34px;
+		display: flex;
+		align-items: center;
+		border-right: 0;
+		border-radius: 6px;
+		font-size: 12px;
+	}
+	.toolbar .track-list .track .track-row-icon {
+		margin-left: 10px;
+	}
+	.toolbar .track-list .track .list-button.select-percentage {
+		height: auto;
+		padding: 0 10px 0 0;
+	}
 }
 `
   document.head.appendChild(style)
@@ -181,6 +291,14 @@
   const MENU_WIDTH = 260
   const POLL_MS = 500
   const SVG_NS = "http://www.w3.org/2000/svg"
+  const KNOB_MIN = 0
+  const KNOB_MAX = 200
+  const KNOB_DEFAULT = 100
+  const KNOB_PIXELS_PER_PERCENT = 2
+  const KNOB_ARC_RADIUS = 16
+  const KNOB_INDICATOR_INNER_RADIUS = 6.75
+  const KNOB_INDICATOR_OUTER_RADIUS = 14.25
+  const KNOB_STEP = 5
 
   const INSTRUMENT_ICONS = {
     guitar:
@@ -201,6 +319,13 @@
       "M98.05 18.54c-11.46-.08-23.59 1.28-36.08 3.99L130.1 261.1c-14.2-5.1-31.18-6.2-48.09-3.2-39.17 6.9-67.15 33.8-62.52 59.8 4.64 26.1 40.14 41.7 79.33 34.7 39.08-6.9 67.08-33.7 62.38-59.8-22.1-80.8-44.4-163-66.39-244.21 50.69 3.59 72.59 31.58 90.59 60.31-.5-62.33-37.7-89.81-87.35-90.16zm310.65 30.7c-13.9.1-28.8 2.59-44.1 7.22l87.1 232.44c-14.6-3.9-31.6-3.7-48.3.7-38.4 10-64.2 39-57.5 64.6 6.7 25.7 43.4 38.3 81.8 28.2 38.5-10 64.2-39 57.5-64.6-28.6-78.8-57.3-158.9-85.8-238.2 50.8-.5 74.9 25.7 95.2 52.9-5.2-58.55-40.4-83.61-85.9-83.26zM258.4 163.5l1.8 248.1c-12.3-8.6-28.4-14.3-45.6-15.9-39.4-3.8-73.7 14.5-76.2 41-2.5 26.3 27.7 50.8 67.1 54.5 39.7 3.9 73.7-14.5 76.3-40.9.2-83.8.8-168.9 1.3-253.1 47.9 17 61.6 49.8 71.2 82.4 19.9-74.1-27.9-112.3-95.9-116.1z",
   }
 
+  const AUDIO_ICONS = {
+    file: INSTRUMENT_ICONS.synth,
+    synth: INSTRUMENT_ICONS.keys,
+    youtube: "M144 80v352l288-176z",
+    none: "M40 192h88l112-88v304l-112-88H40zM300 350L450 200L480 230L330 380Z",
+  }
+
   const nativeValueSetter = Object.getOwnPropertyDescriptor(
     window.HTMLInputElement.prototype,
     "value",
@@ -211,6 +336,10 @@
   let sliderInput = null
   let valueInput = null
   let boundInput = null
+  let observedToolbar = null
+  let vueProxy = null
+  const volumeByTrack = new Map()
+  const listObserver = new MutationObserver(enhanceLists)
 
   function findScroll() {
     return document.querySelector(".toolbar .scroll")
@@ -372,15 +501,21 @@
     return "other"
   }
 
-  function createTrackIcon() {
+  function createTrackIcon(className) {
     const icon = document.createElementNS(SVG_NS, "svg")
-    icon.setAttribute("class", "track-icon")
+    icon.setAttribute("class", className)
     icon.setAttribute("viewBox", "0 0 512 512")
     icon.setAttribute("width", "24")
     icon.setAttribute("height", "24")
     icon.setAttribute("fill", "currentColor")
     icon.appendChild(document.createElementNS(SVG_NS, "path"))
     return icon
+  }
+
+  function applyIconCategory(icon, iconMap, category) {
+    if (icon.dataset.category === category) return
+    icon.dataset.category = category
+    icon.querySelector("path").setAttribute("d", iconMap[category])
   }
 
   function syncTrackIcon(scroll) {
@@ -390,21 +525,297 @@
     if (!button) return
     let icon = button.querySelector(".track-icon")
     if (!icon) {
-      icon = createTrackIcon()
+      icon = createTrackIcon("track-icon")
       button.insertBefore(icon, button.firstChild)
     }
-    const category = categoryForTrack(track)
-    if (icon.dataset.category !== category) {
-      icon.dataset.category = category
-      icon.querySelector("path").setAttribute("d", INSTRUMENT_ICONS[category])
+    applyIconCategory(icon, INSTRUMENT_ICONS, categoryForTrack(track))
+  }
+
+  function audioIconKey(currentAudio) {
+    if (currentAudio === "synth") return "synth"
+    if (currentAudio === "none") return "none"
+    if (currentAudio.startsWith("youtube-")) return "youtube"
+    return "file"
+  }
+
+  function audioSourceLabel(currentAudio) {
+    if (currentAudio === "synth") return "Synth"
+    if (currentAudio === "backingTrack") return "Backing"
+    if (currentAudio === "none") return "Muted"
+    if (currentAudio.startsWith("youtube-")) return "YouTube"
+    if (currentAudio === "audio-render.mp3") return "Render"
+    if (currentAudio.startsWith("audio-")) {
+      const filename = currentAudio.slice("audio-".length)
+      const dotIndex = filename.lastIndexOf(".")
+      return dotIndex > 0 ? filename.slice(0, dotIndex) : filename
     }
+    return "Synth"
+  }
+
+  function findVueProxy() {
+    const app = document.querySelector("#app")
+    const root = app && app.__vue_app__ && app.__vue_app__._container._vnode
+    if (!root) return null
+    const stack = [root]
+    while (stack.length) {
+      const vnode = stack.pop()
+      if (!vnode || typeof vnode !== "object") continue
+      const proxy = vnode.component && vnode.component.proxy
+      if (proxy && "api" in proxy && "audioList" in proxy) return proxy
+      if (vnode.component && vnode.component.subTree)
+        stack.push(vnode.component.subTree)
+      if (Array.isArray(vnode.children)) stack.push(...vnode.children)
+      else if (vnode.children) stack.push(vnode.children)
+    }
+    return null
+  }
+
+  function getVueProxy() {
+    if (vueProxy && vueProxy.api !== undefined) return vueProxy
+    vueProxy = findVueProxy()
+    return vueProxy
+  }
+
+  function syncAudioLabel() {
+    const button = document.querySelector(
+      ".toolbar .scroll .audio-selector .button",
+    )
+    if (!button) return
+    const proxy = getVueProxy()
+    const currentAudio = proxy && proxy.currentAudio
+    if (typeof currentAudio !== "string") return
+
+    let icon = button.querySelector(".audio-icon")
+    if (!icon) {
+      icon = createTrackIcon("audio-icon")
+      button.insertBefore(icon, button.firstChild)
+    }
+    let label = button.querySelector(".audio-label")
+    if (!label) {
+      label = document.createElement("span")
+      label.className = "audio-label"
+      button.appendChild(label)
+    }
+
+    if (button.dataset.audio === currentAudio) return
+    button.dataset.audio = currentAudio
+    applyIconCategory(icon, AUDIO_ICONS, audioIconKey(currentAudio))
+    label.textContent = audioSourceLabel(currentAudio)
+  }
+
+  function knobAngle(percent) {
+    return 225 + (270 * percent) / KNOB_MAX
+  }
+
+  function knobPoint(degrees, radius) {
+    const radians = (degrees * Math.PI) / 180
+    const x = 20 + radius * Math.sin(radians)
+    const y = 20 - radius * Math.cos(radians)
+    return [x, y]
+  }
+
+  function knobArcPath(fromPercent, toPercent, radius) {
+    const [startX, startY] = knobPoint(knobAngle(fromPercent), radius)
+    const [endX, endY] = knobPoint(knobAngle(toPercent), radius)
+    const largeArc = knobAngle(toPercent) - knobAngle(fromPercent) > 180 ? 1 : 0
+    return `M ${startX} ${startY} A ${radius} ${radius} 0 ${largeArc} 1 ${endX} ${endY}`
+  }
+
+  function buildKnobSvg() {
+    const svg = document.createElementNS(SVG_NS, "svg")
+    svg.setAttribute("viewBox", "0 0 40 40")
+    svg.setAttribute("width", "40")
+    svg.setAttribute("height", "40")
+
+    const trackArc = document.createElementNS(SVG_NS, "path")
+    trackArc.setAttribute("fill", "none")
+    trackArc.setAttribute("stroke", "#495057")
+    trackArc.setAttribute("stroke-width", "4")
+    trackArc.setAttribute("stroke-linecap", "round")
+    trackArc.setAttribute("d", knobArcPath(KNOB_MIN, KNOB_MAX, KNOB_ARC_RADIUS))
+
+    const valueArc = document.createElementNS(SVG_NS, "path")
+    valueArc.setAttribute("fill", "none")
+    valueArc.setAttribute("stroke", "#0d6efd")
+    valueArc.setAttribute("stroke-width", "4")
+    valueArc.setAttribute("stroke-linecap", "round")
+
+    const indicator = document.createElementNS(SVG_NS, "line")
+    indicator.setAttribute("stroke", "#fff")
+    indicator.setAttribute("stroke-width", "3")
+    indicator.setAttribute("stroke-linecap", "round")
+
+    svg.append(trackArc, valueArc, indicator)
+    return { svg, valueArc, indicator }
+  }
+
+  function drawKnob(parts, value) {
+    parts.valueArc.setAttribute(
+      "d",
+      knobArcPath(KNOB_MIN, value, KNOB_ARC_RADIUS),
+    )
+    const angle = knobAngle(value)
+    const [innerX, innerY] = knobPoint(angle, KNOB_INDICATOR_INNER_RADIUS)
+    const [outerX, outerY] = knobPoint(angle, KNOB_INDICATOR_OUTER_RADIUS)
+    parts.indicator.setAttribute("x1", String(innerX))
+    parts.indicator.setAttribute("y1", String(innerY))
+    parts.indicator.setAttribute("x2", String(outerX))
+    parts.indicator.setAttribute("y2", String(outerY))
+  }
+
+  function createVolumeKnob(track, input) {
+    const knob = document.createElement("div")
+    knob.className = "volume-knob"
+    knob.setAttribute("role", "slider")
+    knob.setAttribute("tabindex", "0")
+    knob.setAttribute("aria-valuemin", String(KNOB_MIN))
+    knob.setAttribute("aria-valuemax", String(KNOB_MAX))
+    knob.setAttribute("aria-label", track.name || `Track ${track.index + 1}`)
+
+    const parts = buildKnobSvg()
+    const label = document.createElement("span")
+    knob.append(parts.svg, label)
+
+    const setValue = (rawValue, dispatch) => {
+      const clamped = Math.min(
+        KNOB_MAX,
+        Math.max(KNOB_MIN, Math.round(rawValue)),
+      )
+      drawKnob(parts, clamped)
+      label.textContent = String(clamped)
+      knob.setAttribute("aria-valuenow", String(clamped))
+      volumeByTrack.set(track.index, clamped)
+      if (dispatch) {
+        nativeValueSetter.call(input, String(clamped))
+        input.dispatchEvent(new Event("input", { bubbles: true }))
+        input.dispatchEvent(new Event("change", { bubbles: true }))
+      }
+    }
+
+    let activePointerId = null
+    let dragStartY = 0
+    let dragStartValue = KNOB_DEFAULT
+    let pendingFrame = null
+
+    const scheduleWrite = (value) => {
+      if (pendingFrame) return
+      pendingFrame = requestAnimationFrame(() => {
+        pendingFrame = null
+        setValue(value, true)
+      })
+    }
+
+    const releasePointer = (event) => {
+      if (event.pointerId !== activePointerId) return
+      if (knob.hasPointerCapture(event.pointerId))
+        knob.releasePointerCapture(event.pointerId)
+      activePointerId = null
+      if (pendingFrame) {
+        cancelAnimationFrame(pendingFrame)
+        pendingFrame = null
+      }
+      setValue(volumeByTrack.get(track.index) ?? KNOB_DEFAULT, true)
+    }
+
+    knob.addEventListener("pointerdown", (event) => {
+      knob.setPointerCapture(event.pointerId)
+      activePointerId = event.pointerId
+      dragStartY = event.clientY
+      dragStartValue = volumeByTrack.get(track.index) ?? KNOB_DEFAULT
+    })
+    knob.addEventListener("pointermove", (event) => {
+      if (event.pointerId !== activePointerId) return
+      const value =
+        dragStartValue + (dragStartY - event.clientY) / KNOB_PIXELS_PER_PERCENT
+      setValue(value, false)
+      scheduleWrite(value)
+    })
+    knob.addEventListener("pointerup", releasePointer)
+    knob.addEventListener("pointercancel", releasePointer)
+    knob.addEventListener("dblclick", () => setValue(KNOB_DEFAULT, true))
+    knob.addEventListener("keydown", (event) => {
+      if (event.key === "ArrowUp") {
+        event.preventDefault()
+        setValue(
+          (volumeByTrack.get(track.index) ?? KNOB_DEFAULT) + KNOB_STEP,
+          true,
+        )
+      } else if (event.key === "ArrowDown") {
+        event.preventDefault()
+        setValue(
+          (volumeByTrack.get(track.index) ?? KNOB_DEFAULT) - KNOB_STEP,
+          true,
+        )
+      }
+    })
+
+    const redrawFromInput = () => {
+      const value = Number(input.value)
+      if (value !== volumeByTrack.get(track.index)) setValue(value, false)
+    }
+    input.addEventListener("input", redrawFromInput)
+    input.addEventListener("change", redrawFromInput)
+
+    const seeded = volumeByTrack.get(track.index) ?? KNOB_DEFAULT
+    nativeValueSetter.call(input, String(seeded))
+    setValue(seeded, false)
+
+    return knob
+  }
+
+  function insertRowIcon(row, track) {
+    const icon = createTrackIcon("track-row-icon")
+    row.insertBefore(icon, row.firstChild)
+    applyIconCategory(icon, INSTRUMENT_ICONS, categoryForTrack(track))
+  }
+
+  function applyTrackName(row, track) {
+    const nameNode = row.querySelector(".name")
+    if (!nameNode || !track.name) return
+    if (
+      row.dataset.trackName === track.name &&
+      nameNode.textContent === track.name
+    )
+      return
+    nameNode.textContent = track.name
+    row.dataset.trackName = track.name
+  }
+
+  function insertVolumeKnob(row, track) {
+    const container = row.querySelector(".list-button.select-percentage")
+    const input = container && container.querySelector("input[type=number]")
+    if (!container || !input) return
+    container.appendChild(createVolumeKnob(track, input))
+  }
+
+  function enhanceLists() {
+    document
+      .querySelectorAll(".toolbar .track-list .track.item")
+      .forEach((row, index) => {
+        const track =
+          window.api && window.api.score && window.api.score.tracks[index]
+        if (!track) return
+        if (row.dataset.enhanced !== "1") {
+          row.dataset.enhanced = "1"
+          insertRowIcon(row, track)
+          insertVolumeKnob(row, track)
+        }
+        applyTrackName(row, track)
+      })
   }
 
   function tick() {
+    if (document.head.lastElementChild !== style)
+      document.head.appendChild(style)
+
     const scroll = findScroll()
     const toolbar = scroll && scroll.closest(".toolbar")
     if (!scroll || !toolbar) {
       removeSpeedUi()
+      if (observedToolbar) {
+        listObserver.disconnect()
+        observedToolbar = null
+      }
       return
     }
 
@@ -417,6 +828,15 @@
     if (input && input !== boundInput) bindUpstreamInput(input)
     syncLabel()
     syncTrackIcon(scroll)
+
+    if (toolbar !== observedToolbar) {
+      listObserver.disconnect()
+      listObserver.observe(toolbar, { childList: true })
+      observedToolbar = toolbar
+      enhanceLists()
+    }
+
+    syncAudioLabel()
   }
 
   document.addEventListener("click", (event) => {
