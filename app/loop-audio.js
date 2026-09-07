@@ -1,32 +1,10 @@
 "use strict"
 
-// Range/loop playback of the render.mp3 backing track through an AudioWorklet instead of the
-// <audio> element directly, so range looping can restart sample-accurately instead of through
-// the element's seek+play round trip (see loop-fix.js for the symptom this replaces). This file
-// wires the plumbing only: decoding render.mp3 into PCM, feeding it to loop-audio-worklet.js, and
-// intercepting alphaTab's external-media output handler so play/pause/seek/volume/rate go to the
-// worklet while it is engaged. Variable-rate time-stretching (WSOLA) is implemented in
-// loop-audio-worklet.js; the debug object is window.__loopAudio below. At rate 1 the worklet is a
-// plain passthrough.
+// Range/loop playback of the render.mp3 backing track through an AudioWorklet instead of the <audio> element directly, so range looping can restart sample-accurately instead of through the element's seek+play round trip (see loop-fix.js for the symptom this replaces). This file wires the plumbing only: decoding render.mp3 into PCM, feeding it to loop-audio-worklet.js, and intercepting alphaTab's external-media output handler so play/pause/seek/volume/rate go to the worklet while it is engaged. Variable-rate time-stretching (WSOLA) is implemented in loop-audio-worklet.js; the debug object is window.__loopAudio below. At rate 1 the worklet is a plain passthrough.
 //
-// Module state, grouped below: the AudioContext/AudioWorkletNode engine itself; the decoded
-// backing-track buffer (sample rate, frame count, cache key, and decode/size stats kept for a
-// later commit's debug object); the loop range mirrored from alphaTab and pushed to the worklet;
-// position-reporting bookkeeping; the watched <audio class="player"> element; and the watchdog's
-// "last seen api/output" trackers, which only reinstall interception on a genuine change. oxfmt
-// (0.2.0) hoists any comment placed directly before a variable declaration or as the sole content
-// of a block out of its enclosing function, so this file keeps explanatory comments here in the
-// header instead of inline.
+// Module state, grouped below: the AudioContext/AudioWorkletNode engine itself; the decoded backing-track buffer (sample rate, frame count, cache key, and decode/size stats kept for a later commit's debug object); the loop range mirrored from alphaTab and pushed to the worklet; position-reporting bookkeeping; the watched <audio class="player"> element; and the watchdog's "last seen api/output" trackers, which only reinstall interception on a genuine change. oxfmt (0.2.0) hoists any comment placed directly before a variable declaration or as the sole content of a block out of its enclosing function, so this file keeps explanatory comments here in the header instead of inline.
 //
-// Switching the audio source away from render.mp3 (to the Synth) replaces alphaTab's player
-// output without ever calling the proxy's own `pause()` — alphaTab just stops sending it work —
-// so an engaged worklet kept rendering the backing track underneath the new synth output. The
-// watchdog now stops the engine itself (the same worklet-pause + element-position mirroring
-// `pause()` does, but without touching the old output's `raw.pause()`, which may already be
-// torn down) whenever it notices the mode, player output, or api object has moved on while the
-// engine was still active. The proxy's own `pause()` wraps its `raw.pause()` call for the same
-// reason: it can be invoked mid-switch, after alphaTab has already started discarding the output
-// it belongs to.
+// Switching the audio source away from render.mp3 (to the Synth) replaces alphaTab's player output without ever calling the proxy's own `pause()` — alphaTab just stops sending it work — so an engaged worklet kept rendering the backing track underneath the new synth output. The watchdog now stops the engine itself (the same worklet-pause + element-position mirroring `pause()` does, but without touching the old output's `raw.pause()`, which may already be torn down) whenever it notices the mode, player output, or api object has moved on while the engine was still active. The proxy's own `pause()` wraps its `raw.pause()` call for the same reason: it can be invoked mid-switch, after alphaTab has already started discarding the output it belongs to.
 ;(function () {
   const EXTERNAL_MEDIA = 4
   let ctx = null

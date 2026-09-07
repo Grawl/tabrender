@@ -2,16 +2,7 @@
 
 // Retry a synth Play press that landed during the soundfont fetch.
 //
-// Switching the audio source to Synth recreates alphaTab's synthesizer and refetches
-// `/soundfont/sonivox.sf2` (about 1.3 MB). Pressing Play while that fetch is in flight calls
-// `api.play()`, which is a silent no-op because the player is not ready yet — but the Vue
-// component's own `playing` flag has already flipped to true (the button shows Pause), and it
-// never recovers: playback never actually starts and the button never reflects the true state
-// again. This addon watches for exactly that situation — the toolbar's Play button showing
-// active while `api.playerState` is still 0 (not playing) — and re-issues `api.play()` once the
-// synth reports `isReadyForPlayback`, so the tap the user already made takes effect instead of
-// requiring a second one. The 400ms grace period after entering the pending state avoids firing
-// on the brief moment `isReadyForPlayback` can be true just before playback state settles.
+// Switching the audio source to Synth recreates alphaTab's synthesizer and refetches `/soundfont/sonivox.sf2` (about 1.3 MB). Pressing Play while that fetch is in flight calls `api.play()`, which is a silent no-op because the player is not ready yet — but the Vue component's own `playing` flag has already flipped to true (the button shows Pause), and it never recovers: playback never actually starts and the button never reflects the true state again. This addon watches for exactly that situation — the toolbar's Play button showing active while `api.playerState` is still 0 (not playing) — and re-issues `api.play()` once the synth reports `isReadyForPlayback`, so the tap the user already made takes effect instead of requiring a second one. The 400ms grace period after entering the pending state avoids firing on the brief moment `isReadyForPlayback` can be true just before playback state settles.
 ;(function () {
   const style = document.createElement("style")
   style.textContent = `body.at-play-pending .toolbar .scroll button.btn-primary{opacity:.6;cursor:progress}`

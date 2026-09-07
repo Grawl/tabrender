@@ -20,9 +20,9 @@
 #  9. Cache-Control (10 min) on the tab audio endpoint, so the engine's fetch reuses the element's
 #     download of render.mp3;
 #  10. mobile-ui.js: phone layout for the bottom toolbar below a max-width of 640px, wrapping it
-#      into rows, restyling Loop/Count in/Metronome as switch-style toggles, and replacing the
+#      into rows, restyling Loop/Count in/Metronome as switch-style toggles, replacing the
 #      speed number input with a "Speed N%" button that opens a slider/number speed menu (at every
-#      width) and a per-track instrument icon on the track selector button;
+#      width), and a per-track instrument icon (game-icons.net SVG set) on the track selector button;
 #  11. play-ready.js: retries a Play press that lands during the synth's soundfont fetch, since
 #      api.play() is a silent no-op while the synth is not ready and the toolbar button never
 #      recovers on its own; Cache-Control (7 days) on the soundfont endpoint so repeat switches to

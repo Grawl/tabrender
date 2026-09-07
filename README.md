@@ -43,4 +43,6 @@ fixes what can be fixed. GitLab CI runs the same checks in the `lint` stage.
 ## License
 
 MIT for the code in this repository. The sample libraries, amp captures and soundfonts it downloads have their
-own licenses (see the download scripts).
+own licenses (see the download scripts). The per-track instrument icons in `app/mobile-ui.js` are from
+[game-icons.net](https://game-icons.net) by Delapouite, Caro Asercion, Zajkonur and Skoll, licensed
+[CC BY 3.0](https://creativecommons.org/licenses/by/3.0/).

@@ -1,10 +1,6 @@
 // AudioWorkletProcessor for range/loop playback of a pre-decoded PCM buffer.
 //
-// At rate 1 this plays the buffer back sample-for-sample, with an equal-power crossfade at the
-// loop seam so range looping is gapless. Below rate 0.999 it switches to WSOLA time-stretching so
-// slowed-down playback preserves pitch while still looping gapless through the same source range.
-// The WSOLA sequence/overlap/seek window sizes (ms) are tunable at runtime via a "tune" message
-// (see loop-audio.js's `?stretch=seq,ovl,seek` URL param and `window.__loopAudio.tune`).
+// At rate 1 this plays the buffer back sample-for-sample, with an equal-power crossfade at the loop seam so range looping is gapless. Below rate 0.999 it switches to WSOLA time-stretching so slowed-down playback preserves pitch while still looping gapless through the same source range. The WSOLA sequence/overlap/seek window sizes (ms) are tunable at runtime via a "tune" message (see loop-audio.js's `?stretch=seq,ovl,seek` URL param and `window.__loopAudio.tune`).
 function isValidStretch(seqMs, ovlMs, seekMs) {
   return (
     Number.isFinite(seqMs) &&
@@ -149,8 +145,7 @@ class LoopAudioProcessor extends AudioWorkletProcessor {
     return buffer[clamped] / 32768
   }
 
-  // Non-wrapping, non-clamping sample read. Callers must have already proven the index is in
-  // bounds; never call this speculatively.
+  // Non-wrapping, non-clamping sample read. Callers must have already proven the index is in bounds; never call this speculatively.
   rawAt(frameIndex, ch) {
     const buffer = ch === 0 ? this.chL : this.chR
     return buffer[frameIndex] / 32768
