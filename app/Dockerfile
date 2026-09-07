@@ -36,7 +36,8 @@
 # The start task runs with --cached-only: the image ships no deno.lock, so a plain start re-resolves npm
 # dependencies against the registry and hung when a newer hono was published; the cached tree is complete.
 # The preview soundfont is the bundled sonivox.sf2 with its guitar/bass instruments patched by
-# soundfont/sf2envelope.py: upstream's envelopes fade every note to silence 70 ms after the attack.
+# soundfont/sf2envelope.py: upstream's envelopes fade every note to silence 70 ms after the attack. Its URL in
+# the player carries the file's checksum, so a changed bank gets past the week-long browser cache.
 # BASE (build arg, e.g. /band-a) re-bases the SPA under a sub-path: API base, router history base, socket.io
 # path, better-auth base, soundfont URL and index.html asset links. nginx strips the prefix (deploy/tabs.conf).
 # The build fails if the upstream code changed and an anchor is gone — re-check the patches then.
@@ -96,12 +97,16 @@ RUN set -eu; cd /app/dist/assets; f=$(ls Tab-*.js); \
       grep -q 'zo(He,{query:{clientType:"tabPlayer"}' "$i"; sed -i 's#zo(He,{query:{clientType:"tabPlayer"}#zo("",{path:He+"/socket.io",query:{clientType:"tabPlayer"}#' "$i"; \
       grep -q 'eE({baseURL:He})' "$i"; sed -i 's#eE({baseURL:He})#eE({baseURL:location.origin+He+"/api/auth"})#' "$i"; \
       if grep -q 'fetch("/api' "$i" || grep -q 'fetch(`/api' "$i"; then echo "unrebased API call left"; exit 1; fi; \
-      grep -q 'soundFont:"/soundfont/sonivox.sf2"' "$f"; sed -i 's#soundFont:"/soundfont/sonivox.sf2"#soundFont:Se+"/soundfont/sonivox.sf2"#' "$f"; \
       h=/app/dist/index.html; \
       sed -i "s#src=\"/assets/#src=\"$BASE/assets/#g; s#href=\"/assets/#href=\"$BASE/assets/#g; s#href=\"/favicon.ico\"#href=\"$BASE/favicon.ico\"#; s#<head>#<head><script>window.__BASE=\"$BASE\"</script>#" "$h"; \
       grep -q "$BASE/assets/" "$h"; \
       for x in "$f" "$i"; do rm -f "$x.gz"; gzip -k -9 "$x"; chown deno:deno "$x" "$x.gz"; done; \
     fi; \
+    sfv=$(md5sum /app/dist/soundfont/sonivox.sf2); sfv=$(printf '%.8s' "$sfv"); \
+    grep -q 'soundFont:"/soundfont/sonivox.sf2"' "$f"; \
+    sed -i "s#soundFont:\"/soundfont/sonivox.sf2\"#soundFont:(window.__BASE||\"\")+\"/soundfont/sonivox.sf2?v=$sfv\"#" "$f"; \
+    grep -q "sonivox.sf2?v=$sfv" "$f"; \
+    rm -f "$f.gz"; gzip -k -9 "$f"; chown deno:deno "$f" "$f.gz"; \
     h=/app/dist/index.html; \
     grep -q '</head>' "$h"; \
     sed -i "s#</head>#<script defer src=\"$BASE/touch-select.js\"></script></head>#" "$h"; \

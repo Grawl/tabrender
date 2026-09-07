@@ -36,7 +36,6 @@ services:
       - "127.0.0.1:47778:47777"
     volumes:
       - ./bands/band-a:/app/data
-      - ./soundfont/sonivox.sf2:/app/dist/soundfont/sonivox.sf2:ro
     networks:
       - default
       - proxy
@@ -53,7 +52,6 @@ services:
       - "127.0.0.1:47779:47777"
     volumes:
       - ./bands/band-b:/app/data
-      - ./soundfont/sonivox.sf2:/app/dist/soundfont/sonivox.sf2:ro
     networks:
       - default
       - proxy
