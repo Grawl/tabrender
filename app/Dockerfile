@@ -19,8 +19,9 @@
 #     at runtime via the `?stretch=seq,ovl,seek` URL param (ms) or `window.__loopAudio.tune(...)`;
 #  9. Cache-Control (10 min) on the tab audio endpoint, so the engine's fetch reuses the element's
 #     download of render.mp3;
-#  10. mobile-ui.js: phone layout for the bottom toolbar, wrapping it into two rows and restyling
-#      the Loop/Count in/Metronome buttons as switch-style toggles, below a max-width of 640px.
+#  10. mobile-ui.js: phone layout for the bottom toolbar below a max-width of 640px, wrapping it
+#      into rows, restyling Loop/Count in/Metronome as switch-style toggles, and replacing the
+#      speed number input with a "Speed N%" button that opens a preset/custom speed menu.
 # BASE (build arg, e.g. /band-a) re-bases the SPA under a sub-path: API base, router history base, socket.io
 # path, better-auth base, soundfont URL and index.html asset links. nginx strips the prefix (deploy/tabs.conf).
 # The build fails if the upstream code changed and an anchor is gone — re-check the patches then.
