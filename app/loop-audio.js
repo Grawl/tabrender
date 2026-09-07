@@ -31,8 +31,10 @@
   let bufferLengthFrames = 0
   let cacheKey = null
   let decodeGeneration = 0
-  let _decodeMs = 0
-  let _bufferMB = 0
+  let decodeMs = 0
+  let bufferMB = 0
+  let wrapCount = 0
+  let lastWrapMs = null
   let L0 = 0
   let L1 = 0
   let looping = false
@@ -159,8 +161,8 @@
     if (decoded.duration > 600) return
 
     const { chL, chR } = convertToPcm(decoded)
-    _bufferMB = (chL.buffer.byteLength + chR.buffer.byteLength) / (1024 * 1024)
-    _decodeMs = performance.now() - startedAt
+    bufferMB = (chL.buffer.byteLength + chR.buffer.byteLength) / (1024 * 1024)
+    decodeMs = performance.now() - startedAt
     sampleRate = decoded.sampleRate
     bufferLengthFrames = decoded.length
     cacheKey = src
@@ -309,8 +311,11 @@
       const reportedMs = looping ? Math.min(ms, endMs - 15) : ms
       if (currentOutput && currentProtoUpdatePosition)
         currentProtoUpdatePosition.call(currentOutput, reportedMs)
-      if (lastFrame !== null && data.frame < lastFrame && el)
+      if (lastFrame !== null && data.frame < lastFrame && el) {
         el.dispatchEvent(new Event("playing"))
+        wrapCount++
+        lastWrapMs = Date.now()
+      }
       lastReportedMs = reportedMs
       lastFrame = data.frame
     } else if (data.type === "ended") {
@@ -354,4 +359,38 @@
 
   setInterval(watchdogTick, 500)
   window.addEventListener("pagehide", resetEngine)
+
+  document.addEventListener(
+    "pointerdown",
+    () => {
+      if (ctx) ctx.resume()
+    },
+    { once: true, capture: true },
+  )
+  document.addEventListener("visibilitychange", () => {
+    if (ctx && engineActive) ctx.resume()
+  })
+
+  window.__loopAudio = {
+    get state() {
+      if (!engineAvailable) return "unavailable"
+      if (engineActive) return "engine"
+      return "fallback"
+    },
+    get engineActive() {
+      return engineActive
+    },
+    get wraps() {
+      return wrapCount
+    },
+    get lastWrapMs() {
+      return lastWrapMs
+    },
+    get decodeMs() {
+      return decodeMs
+    },
+    get bufferMB() {
+      return bufferMB
+    },
+  }
 })()
