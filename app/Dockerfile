@@ -35,6 +35,8 @@
 #      Synth don't re-download it.
 # The start task runs with --cached-only: the image ships no deno.lock, so a plain start re-resolves npm
 # dependencies against the registry and hung when a newer hono was published; the cached tree is complete.
+# The preview soundfont is the bundled sonivox.sf2 with its guitar/bass instruments patched by
+# soundfont/sf2envelope.py: upstream's envelopes fade every note to silence 70 ms after the attack.
 # BASE (build arg, e.g. /band-a) re-bases the SPA under a sub-path: API base, router history base, socket.io
 # path, better-auth base, soundfont URL and index.html asset links. nginx strips the prefix (deploy/tabs.conf).
 # The build fails if the upstream code changed and an anchor is gone — re-check the patches then.
@@ -53,6 +55,8 @@ COPY --chown=deno:deno loop-audio.js /app/dist/loop-audio.js
 COPY --chown=deno:deno loop-audio-worklet.js /app/dist/loop-audio-worklet.js
 COPY --chown=deno:deno mobile-ui.js /app/dist/mobile-ui.js
 COPY --chown=deno:deno play-ready.js /app/dist/play-ready.js
+# sonivox.sf2 = the image's own GM bank with guitar/bass volume envelopes fixed by soundfont/sf2envelope.py
+COPY --chown=deno:deno sonivox.sf2 /app/dist/soundfont/sonivox.sf2
 # The entrypoint expects the image WORKDIR (/app) unchanged, so the patch step cd's inside the RUN.
 # hadolint ignore=DL3003
 RUN set -eu; cd /app/dist/assets; f=$(ls Tab-*.js); \

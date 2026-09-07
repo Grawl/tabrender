@@ -18,6 +18,8 @@ headless. The player is patched so the cursor follows the MP3 exactly even acros
 - `deploy/tabs.example.conf` — nginx vhost for the jonasal/nginx-certbot container; the real `deploy/tabs.conf` is gitignored.
 - `soundfont/` — GM soundfont for the in-browser MIDI preview; `sf2mono.py` patches stereo samples to mono because
   alphaTab's synth drops them (presets go silent).
+  `sf2envelope.py` fixes the guitar/bass volume envelopes of the bundled sonivox bank (notes faded out 70 ms after the
+  attack); its output is committed as `app/sonivox.sf2` and copied into the player image.
 - `sf-compare/` — local A/B page for soundfonts (diagnostic).
 
 ## What is not in git and where it comes from
@@ -46,4 +48,5 @@ fixes what can be fixed. GitLab CI runs the same checks in the `lint` stage.
 MIT for the code in this repository. The sample libraries, amp captures and soundfonts it downloads have their
 own licenses (see the download scripts). The per-track instrument icons in `app/mobile-ui.js` are from
 [game-icons.net](https://game-icons.net) by Delapouite, Caro Asercion, Zajkonur and Skoll, licensed
-[CC BY 3.0](https://creativecommons.org/licenses/by/3.0/).
+[CC BY 3.0](https://creativecommons.org/licenses/by/3.0/); the toolbar toggle icons are from
+[Tabler Icons](https://tabler.io), MIT licensed.
