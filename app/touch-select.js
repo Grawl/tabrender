@@ -11,6 +11,8 @@
 // `highlightPlaybackRange`, `boundsLookup`) because there is no public API for "set the range to
 // these two beats". The CSS additions only enlarge touch targets on coarse pointers; desktop mouse
 // behaviour is untouched.
+// A finger is coarse: anywhere inside the beat's real bounds counts (the desktop handle drag
+// additionally rejects the gap after the notes, which would reject most finger positions).
 ;(function () {
   const style = document.createElement("style")
   style.textContent = `
@@ -49,14 +51,17 @@
 
   function getContext() {
     const handles = document.querySelector(".at-selection-handles")
-    const container = handles && handles.parentElement
+    const container =
+      handles &&
+      handles.parentElement
     const api = window.api
     if (
       !container ||
       !api ||
       !api.boundsLookup ||
       !api.container ||
-      api.container.element !== container
+      api.container.element !==
+        container
     ) {
       return null
     }
@@ -67,13 +72,7 @@
     const rect = context.container.getBoundingClientRect()
     const x = touch.pageX - (rect.left + window.scrollX)
     const y = touch.pageY - (rect.top + window.scrollY)
-    const beat = context.api.boundsLookup.getBeatAtPos(x, y)
-    if (!beat) return null
-    const bounds = context.api.boundsLookup.findBeat(beat)
-    const inDeadGap =
-      x >= bounds.visualBounds.x + bounds.visualBounds.w &&
-      x <= bounds.realBounds.x + bounds.realBounds.w
-    return inDeadGap ? null : beat
+    return context.api.boundsLookup.getBeatAtPos(x, y)
   }
 
   function applyRange(context, startBeat, endBeat) {
