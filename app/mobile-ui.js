@@ -396,6 +396,19 @@
 	--bs-btn-active-bg: #2a2aa8;
 	color: #fff;
 }
+.toolbar .track-list .list-header .clear-solo-btn {
+	float: left;
+	height: 34px;
+	padding: 0 12px;
+	font-size: 13px;
+	background-color: #ffc107;
+	color: #212529;
+	border: 0;
+	border-radius: 6px;
+}
+.toolbar .track-list .list-header .clear-solo-btn[hidden] {
+	display: none;
+}
 @media (max-width: 640px) {
 	.toolbar {
 		height: auto;
@@ -1152,6 +1165,26 @@
     if (muted.length) api.changeTrackMute(muted, true)
   }
 
+  function clearSolo() {
+    soloTracks.clear()
+    applyTrackStates()
+    syncTrackRowStates()
+  }
+
+  function ensureClearSoloButton() {
+    const header = document.querySelector(".toolbar .track-list .list-header")
+    if (!header) return null
+    const existing = header.querySelector(".clear-solo-btn")
+    if (existing) return existing
+    const button = document.createElement("button")
+    button.type = "button"
+    button.className = "clear-solo-btn"
+    button.textContent = "Clear solo"
+    button.addEventListener("click", clearSolo)
+    header.insertBefore(button, header.firstChild)
+    return button
+  }
+
   function syncTrackRowStates() {
     document
       .querySelectorAll(".toolbar .track-list .track.item")
@@ -1162,6 +1195,8 @@
         if (mutedTracks.has(trackIndex)) row.dataset.mute = "1"
         else delete row.dataset.mute
       })
+    const clearButton = ensureClearSoloButton()
+    if (clearButton) clearButton.hidden = soloTracks.size < 2
   }
 
   function syncTrackListAudioState() {
