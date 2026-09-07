@@ -30,6 +30,8 @@
 #      api.play() is a silent no-op while the synth is not ready and the toolbar button never
 #      recovers on its own; Cache-Control (7 days) on the soundfont endpoint so repeat switches to
 #      Synth don't re-download it.
+# The start task runs with --cached-only: the image ships no deno.lock, so a plain start re-resolves npm
+# dependencies against the registry and hung when a newer hono was published; the cached tree is complete.
 # BASE (build arg, e.g. /band-a) re-bases the SPA under a sub-path: API base, router history base, socket.io
 # path, better-auth base, soundfont URL and index.html asset links. nginx strips the prefix (deploy/tabs.conf).
 # The build fails if the upstream code changed and an anchor is gone — re-check the patches then.
@@ -70,6 +72,10 @@ RUN set -eu; cd /app/dist/assets; f=$(ls Tab-*.js); \
     grep -q '            tabs.push(tab);' "$b"; \
     sed -i 's#            tabs.push(tab);#            Object.assign(tab, { hasRender: await fs.exists(path.join(tabDir, id, "render.mp3")) });\n            tabs.push(tab);#' "$b"; \
     grep -q hasRender "$b"; \
+    j=/app/deno.jsonc; \
+    grep -q '"start": "deno run --allow-all backend/main.ts",' "$j"; \
+    sed -i 's#"start": "deno run --allow-all backend/main.ts",#"start": "deno run --allow-all --cached-only backend/main.ts",#' "$j"; \
+    grep -q 'cached-only' "$j"; \
     m=/app/backend/main.ts; \
     grep -q '                "Accept-Ranges": "bytes",' "$m"; \
     sed -i 's#                "Accept-Ranges": "bytes",#                "Accept-Ranges": "bytes",\n                "Cache-Control": "private, max-age=600",#' "$m"; \
