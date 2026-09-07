@@ -13,6 +13,16 @@
 // behaviour is untouched.
 // A finger is coarse: anywhere inside the beat's real bounds counts (the desktop handle drag
 // additionally rejects the gap after the notes, which would reject most finger positions).
+//
+// `AlphaTabApi._cursorSelectRange` caches pixel bounds on the `api._selectionStart/_selectionEnd`
+// wrapper objects when the highlight is drawn. A later re-render (a rotation, or any layout change)
+// produces fresh bounds in `api.boundsLookup`, but the cached wrappers still point at the old ones,
+// so the selection highlight and drag handles stay at the pre-rotation position. Re-issuing
+// `highlightPlaybackRange` with the same beats after every render recomputes the bounds from the
+// current layout. `changeTrack` clears the drawn highlight but leaves `_selectionStart/_selectionEnd`
+// set; if those beats are not present in the new track's `boundsLookup`, alphaTab's own render path
+// throws reading `realBounds` off `undefined`. Clearing the two fields once their beats are gone from
+// the current bounds lookup avoids that.
 ;(function () {
   const style = document.createElement("style")
   style.textContent = `
@@ -218,4 +228,32 @@
     },
     { passive: false, capture: true },
   )
+
+  function repositionSelection() {
+    const api = window.api
+    if (!api || document.body.classList.contains("at-selection-handle-drag"))
+      return
+    const start = api._selectionStart
+    const end = api._selectionEnd
+    if (!start || !start.beat || !end || !end.beat || start.beat === end.beat)
+      return
+    const lookup = api.boundsLookup
+    if (!lookup || !lookup.findBeat(start.beat) || !lookup.findBeat(end.beat)) {
+      api._selectionStart = undefined
+      api._selectionEnd = undefined
+      return
+    }
+    api.highlightPlaybackRange(start.beat, end.beat)
+  }
+
+  let attachedApi = null
+  function attachReposition(api) {
+    attachedApi = api
+    api.postRenderFinished.on(repositionSelection)
+  }
+  setInterval(() => {
+    const api = window.api
+    if (api && api !== attachedApi && api.postRenderFinished)
+      attachReposition(api)
+  }, 1000)
 })()

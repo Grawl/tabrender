@@ -21,7 +21,12 @@
 #     download of render.mp3;
 #  10. mobile-ui.js: phone layout for the bottom toolbar below a max-width of 640px, wrapping it
 #      into rows, restyling Loop/Count in/Metronome as switch-style toggles, and replacing the
-#      speed number input with a "Speed N%" button that opens a preset/custom speed menu.
+#      speed number input with a "Speed N%" button that opens a slider/number speed menu (at every
+#      width) and a per-track instrument icon on the track selector button;
+#  11. play-ready.js: retries a Play press that lands during the synth's soundfont fetch, since
+#      api.play() is a silent no-op while the synth is not ready and the toolbar button never
+#      recovers on its own; Cache-Control (7 days) on the soundfont endpoint so repeat switches to
+#      Synth don't re-download it.
 # BASE (build arg, e.g. /band-a) re-bases the SPA under a sub-path: API base, router history base, socket.io
 # path, better-auth base, soundfont URL and index.html asset links. nginx strips the prefix (deploy/tabs.conf).
 # The build fails if the upstream code changed and an anchor is gone — re-check the patches then.
@@ -37,6 +42,7 @@ COPY --chown=deno:deno loop-fix.js /app/dist/loop-fix.js
 COPY --chown=deno:deno loop-audio.js /app/dist/loop-audio.js
 COPY --chown=deno:deno loop-audio-worklet.js /app/dist/loop-audio-worklet.js
 COPY --chown=deno:deno mobile-ui.js /app/dist/mobile-ui.js
+COPY --chown=deno:deno play-ready.js /app/dist/play-ready.js
 RUN set -eu; cd /app/dist/assets; f=$(ls Tab-*.js); \
     grep -q 'this.currentAudio=this.getConfig("audio","synth")' "$f"; \
     sed -i 's#this.currentAudio=this.getConfig("audio","synth")#this.currentAudio=this.getConfig("audio",this.audioList.some(o=>o.filename==="render.mp3")?"audio-render.mp3":"synth")#' "$f"; \
@@ -60,6 +66,9 @@ RUN set -eu; cd /app/dist/assets; f=$(ls Tab-*.js); \
     grep -q '                "Accept-Ranges": "bytes",' "$m"; \
     sed -i 's#                "Accept-Ranges": "bytes",#                "Accept-Ranges": "bytes",\n                "Cache-Control": "private, max-age=600",#' "$m"; \
     grep -q 'Cache-Control' "$m"; \
+    grep -q '    app.get("/", (c) => {' "$m"; \
+    sed -i 's#    app.get("/", (c) => {#    app.use("/soundfont/*", async (c, next) => { await next(); c.res.headers.set("Cache-Control", "public, max-age=604800"); });\n    app.get("/", (c) => {#' "$m"; \
+    grep -q 'max-age=604800' "$m"; \
     if [ -n "$BASE" ]; then \
       grep -q 'function sC(){return""}' "$i"; sed -i "s#function sC(){return\"\"}#function sC(){return\"$BASE\"}#" "$i"; \
       grep -q 'history:rk()' "$i"; sed -i "s#history:rk()#history:rk(\"$BASE\")#" "$i"; \
@@ -82,6 +91,8 @@ RUN set -eu; cd /app/dist/assets; f=$(ls Tab-*.js); \
     grep -q 'loop-audio.js' "$h"; \
     sed -i "s#</head>#<script defer src=\"$BASE/mobile-ui.js\"></script></head>#" "$h"; \
     grep -q 'mobile-ui.js' "$h"; \
+    sed -i "s#</head>#<script defer src=\"$BASE/play-ready.js\"></script></head>#" "$h"; \
+    grep -q 'play-ready.js' "$h"; \
     if [ -n "$ANALYTICS_ID" ]; then \
       h=/app/dist/index.html; \
       sed -i "s#</head>#<script defer src=\"$ANALYTICS_SRC\" data-website-id=\"$ANALYTICS_ID\"></script></head>#" "$h"; \
