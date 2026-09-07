@@ -1,5 +1,6 @@
 # Run with prek (npm devDependency): `npx prek install` once, then hooks run on every commit.
-# Every hook calls this repo's own tooling: ruff (brew install ruff / pip install ruff) and the npm packages.
+# Every hook calls this repo's own tooling: ruff (brew install ruff / pip install ruff), hadolint (brew install hadolint)
+# and the npm packages.
 repos:
   - repo: local
     hooks:
@@ -31,3 +32,8 @@ repos:
         language: system
         types: [markdown]
         pass_filenames: false
+      - id: hadolint
+        name: hadolint
+        entry: hadolint
+        language: system
+        types: [dockerfile]

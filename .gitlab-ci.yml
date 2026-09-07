@@ -22,6 +22,12 @@ lint:web:
     - npx oxfmt --check
     - npx markdownlint-cli2
 
+lint:docker:
+  stage: lint
+  image: hadolint/hadolint:v2.12.0-alpine
+  script:
+    - hadolint app/Dockerfile render/Dockerfile
+
 # Kaniko builds without a Docker daemon. $IMAGE_TAGS carries the --destination flags:
 # <ref-slug> always, plus "latest" on the default branch.
 .kaniko:
