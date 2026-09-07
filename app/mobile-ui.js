@@ -435,17 +435,12 @@
 		margin-left: 10px;
 	}
 	.toolbar .track-list .track .list-button.select-percentage {
-		padding: 0 10px;
-		height: 34px;
 		display: flex;
 		align-items: center;
-		border-right: 0;
-		border-radius: 6px;
-		font-size: 12px;
-	}
-	.toolbar .track-list .track .list-button.select-percentage {
 		height: auto;
 		padding: 0 10px 0 0;
+		border-right: 0;
+		border-radius: 6px;
 	}
 }
 `
