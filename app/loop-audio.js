@@ -17,6 +17,16 @@
 // (0.2.0) hoists any comment placed directly before a variable declaration or as the sole content
 // of a block out of its enclosing function, so this file keeps explanatory comments here in the
 // header instead of inline.
+//
+// Switching the audio source away from render.mp3 (to the Synth) replaces alphaTab's player
+// output without ever calling the proxy's own `pause()` — alphaTab just stops sending it work —
+// so an engaged worklet kept rendering the backing track underneath the new synth output. The
+// watchdog now stops the engine itself (the same worklet-pause + element-position mirroring
+// `pause()` does, but without touching the old output's `raw.pause()`, which may already be
+// torn down) whenever it notices the mode, player output, or api object has moved on while the
+// engine was still active. The proxy's own `pause()` wraps its `raw.pause()` call for the same
+// reason: it can be invoked mid-switch, after alphaTab has already started discarding the output
+// it belongs to.
 ;(function () {
   const EXTERNAL_MEDIA = 4
   let ctx = null
@@ -283,10 +293,23 @@
             lastFrame !== null ? lastFrame : el.currentTime * sampleRate
           el.currentTime = frame / sampleRate
         }
-        raw.pause()
+        try {
+          raw.pause()
+        } catch (error) {
+          console.warn("loop-audio: pause during mode switch failed", error)
+        }
         engineActive = false
       },
     }
+  }
+
+  function stopEngine() {
+    if (node) node.port.postMessage({ type: "pause" })
+    if (el && sampleRate) {
+      const frame = lastFrame !== null ? lastFrame : el.currentTime * sampleRate
+      el.currentTime = frame / sampleRate
+    }
+    engineActive = false
   }
 
   function interceptOutput(output) {
@@ -369,14 +392,24 @@
     checkSrcChange()
 
     const api = window.api
-    if (!api) return
     const mode =
-      api.actualPlayerMode !== undefined
+      api &&
+      (api.actualPlayerMode !== undefined
         ? api.actualPlayerMode
-        : api.settings.player.playerMode
-    if (mode !== EXTERNAL_MEDIA) return
+        : api.settings.player.playerMode)
+    const output = api && api.player && api.player.output
 
-    const output = api.player && api.player.output
+    if (
+      engineActive &&
+      (mode !== EXTERNAL_MEDIA ||
+        output !== currentOutput ||
+        api !== lastSeenApi)
+    ) {
+      stopEngine()
+    }
+
+    if (!api) return
+    if (mode !== EXTERNAL_MEDIA) return
     if (!output) return
 
     if (api !== lastSeenApi || output !== lastSeenOutput) {
