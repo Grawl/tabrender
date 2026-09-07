@@ -36,6 +36,8 @@ ARG BASE=""
 # data-website-id). Both empty = no tracker.
 ARG ANALYTICS_SRC=""
 ARG ANALYTICS_ID=""
+# The upstream entrypoint drops to the deno user itself; root is needed to patch /app.
+# hadolint ignore=DL3002,DL3066
 USER root
 COPY --chown=deno:deno touch-select.js /app/dist/touch-select.js
 COPY --chown=deno:deno loop-fix.js /app/dist/loop-fix.js
@@ -43,6 +45,8 @@ COPY --chown=deno:deno loop-audio.js /app/dist/loop-audio.js
 COPY --chown=deno:deno loop-audio-worklet.js /app/dist/loop-audio-worklet.js
 COPY --chown=deno:deno mobile-ui.js /app/dist/mobile-ui.js
 COPY --chown=deno:deno play-ready.js /app/dist/play-ready.js
+# The entrypoint expects the image WORKDIR (/app) unchanged, so the patch step cd's inside the RUN.
+# hadolint ignore=DL3003
 RUN set -eu; cd /app/dist/assets; f=$(ls Tab-*.js); \
     grep -q 'this.currentAudio=this.getConfig("audio","synth")' "$f"; \
     sed -i 's#this.currentAudio=this.getConfig("audio","synth")#this.currentAudio=this.getConfig("audio",this.audioList.some(o=>o.filename==="render.mp3")?"audio-render.mp3":"synth")#' "$f"; \
@@ -74,7 +78,7 @@ RUN set -eu; cd /app/dist/assets; f=$(ls Tab-*.js); \
       grep -q 'history:rk()' "$i"; sed -i "s#history:rk()#history:rk(\"$BASE\")#" "$i"; \
       grep -q 'zo(He,{query:{clientType:"tabPlayer"}' "$i"; sed -i 's#zo(He,{query:{clientType:"tabPlayer"}#zo("",{path:He+"/socket.io",query:{clientType:"tabPlayer"}#' "$i"; \
       grep -q 'eE({baseURL:He})' "$i"; sed -i 's#eE({baseURL:He})#eE({baseURL:location.origin+He+"/api/auth"})#' "$i"; \
-      ! grep -q 'fetch("/api' "$i"; ! grep -q 'fetch(`/api' "$i"; \
+      if grep -q 'fetch("/api' "$i" || grep -q 'fetch(`/api' "$i"; then echo "unrebased API call left"; exit 1; fi; \
       grep -q 'soundFont:"/soundfont/sonivox.sf2"' "$f"; sed -i 's#soundFont:"/soundfont/sonivox.sf2"#soundFont:Se+"/soundfont/sonivox.sf2"#' "$f"; \
       h=/app/dist/index.html; \
       sed -i "s#src=\"/assets/#src=\"$BASE/assets/#g; s#href=\"/assets/#href=\"$BASE/assets/#g; s#href=\"/favicon.ico\"#href=\"$BASE/favicon.ico\"#; s#<head>#<head><script>window.__BASE=\"$BASE\"</script>#" "$h"; \

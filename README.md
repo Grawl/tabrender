@@ -37,7 +37,8 @@ headless. The player is patched so the cursor follows the MP3 exactly even acros
 ## Development
 
 `npm install` brings oxlint, oxfmt, markdownlint-cli2 and prek; ruff comes from `brew install ruff` or
-`pip install ruff`. `npx prek install` enables the pre-commit hooks; `npm run lint` runs everything, `npm run format`
+`pip install ruff`, hadolint (Dockerfiles) from `brew install hadolint`. `npx prek install` enables the pre-commit
+hooks; `npm run lint` runs everything, `npm run format`
 fixes what can be fixed. GitLab CI runs the same checks in the `lint` stage.
 
 ## License

@@ -1,0 +1,6 @@
+# hadolint config. Ignored globally:
+#  DL3008/DL3013 — pinning apt/pip versions inside the render image is impractical (Debian package versions
+#  churn; the Python side pins what matters: neural-amp-modeler==0.12.3, the rest floats with torch).
+ignored:
+  - DL3008
+  - DL3013
