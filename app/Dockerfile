@@ -12,6 +12,7 @@
 #  7. loop-fix.js: restarts a looped playback range correctly with an external audio file (alphaTab
 #     seeks one bar late and pauses there);
 #  8. loop-audio.js + loop-audio-worklet.js: a gapless, pitch-preserving loop engine that intercepts alphaTab's external-media output handler and drives play/pause/seek/rate through an AudioWorkletNode fed with the render.mp3 backing track decoded to PCM (an equal-power crossfade at the loop seam at normal speed, WSOLA time-stretching below it), engaging only once that backing track has been decoded for the audio element's current source and its duration matches the element's duration to the millisecond, and otherwise falling back to the plain <audio> element and loop-fix.js's restart patch — e.g. before the decode finishes, for non-render sources such as YouTube, or if decoding fails.
+#  9. adds a `Cache-Control: private, max-age=600` response header to the tab audio/download endpoint so the browser caches the (large, immutable-once-rendered) render.mp3 file instead of re-fetching it on every seek/reload.
 # BASE (build arg, e.g. /band-a) re-bases the SPA under a sub-path: API base, router history base, socket.io
 # path, better-auth base, soundfont URL and index.html asset links. nginx strips the prefix (deploy/tabs.conf).
 # The build fails if the upstream code changed and an anchor is gone — re-check the patches then.
@@ -45,6 +46,10 @@ RUN set -eu; cd /app/dist/assets; f=$(ls Tab-*.js); \
     grep -q '            tabs.push(tab);' "$b"; \
     sed -i 's#            tabs.push(tab);#            Object.assign(tab, { hasRender: await fs.exists(path.join(tabDir, id, "render.mp3")) });\n            tabs.push(tab);#' "$b"; \
     grep -q hasRender "$b"; \
+    m=/app/backend/main.ts; \
+    grep -q '                "Accept-Ranges": "bytes",' "$m"; \
+    sed -i 's#                "Accept-Ranges": "bytes",#                "Accept-Ranges": "bytes",\n                "Cache-Control": "private, max-age=600",#' "$m"; \
+    grep -q 'Cache-Control' "$m"; \
     if [ -n "$BASE" ]; then \
       grep -q 'function sC(){return""}' "$i"; sed -i "s#function sC(){return\"\"}#function sC(){return\"$BASE\"}#" "$i"; \
       grep -q 'history:rk()' "$i"; sed -i "s#history:rk()#history:rk(\"$BASE\")#" "$i"; \
