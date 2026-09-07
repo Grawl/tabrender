@@ -2,19 +2,21 @@
 
 // Phone layout for the bottom toolbar (`div.toolbar > div.scroll`, upstream flex row with horizontal scroll). Below 640px width the row wraps, via flexbox `order` rather than DOM reordering: Play and the three toggle buttons (Loop, Count in, Metronome) first, then the track/audio selectors, then the speed menu button, then Edit (only present when logged in), each group dropping to its own line once it no longer fits — the toolbar's own height goes from a fixed 44px to auto so it can grow with the wrapped content. The toolbar is `position: fixed` at the viewport bottom (upstream, unchanged here) and now taller than the desktop 44px, so `.main` (the score's containing block) gets bottom padding to match, or the fixed toolbar would permanently cover the tail of a scrolled-to-the-end score. The navbar's own right padding is shrunk to match on phones (`.mobile .my-navbar .toolbar[data-v-8f474ce9]{padding:0 0 0 10px}` upstream drops it entirely).
 //
-// Play, Loop, Count in and Metronome are square icon-only buttons at every width, not just on phones, since the icon-plus-text pills left too little room once four of them share a row with the track/audio selectors on a 390px screen. Play morphs a play triangle into two pause bars via `clip-path` transitions on `::before`/`::after` instead of swapping FontAwesome icons, so the shape change animates; Loop/Count in/Metronome each get a small SVG icon (`TOGGLE_ICONS`, inserted the same way as the track icon) tinted per toggle once `.active`, since a colour-only active state reads better at 44px than upstream's checkmark-plus-text. `syncToggleButtons` derives which toggle a button is from its own text content (`Loop`/`Count in`/`Metronome`, the same static text Vue renders) rather than tracking component state directly, for the same DOM-scraping reason `categoryForTrack`/`syncTrackIcon` do — there is no stable class or attribute upstream to key off. The buttons keep upstream's own `.active`/`.disabled` classes (Metronome disables itself when the audio source isn't the synth); only the visual treatment changes.
+// Play, Loop, Count in and Metronome are square icon-only buttons at every width, not just on phones, since the icon-plus-text pills left too little room once four of them share a row with the track/audio selectors on a 390px screen. Play morphs a play triangle into two pause bars via `clip-path` transitions on `::before`/`::after` instead of swapping FontAwesome icons, so the shape change animates; Loop/Count in/Metronome each get a small stroke SVG icon (`TOGGLE_ICONS`, via `createStrokeIcon`) and, like Play, show their active state as a filled background rather than an icon tint, so all four toolbar toggles read the same way at 44px instead of Play alone standing out. `syncToggleButtons` derives which toggle a button is from its own text content (`Loop`/`Count in`/`Metronome`, the same static text Vue renders) rather than tracking component state directly, for the same DOM-scraping reason `categoryForTrack`/`syncTrackIcon` do — there is no stable class or attribute upstream to key off. The buttons keep upstream's own `.active`/`.disabled` classes (Metronome disables itself when the audio source isn't the synth); only the visual treatment changes.
 //
-// Upstream's speed control (`div.select-percentage`, a plain number input in the toolbar) is hidden at every width and replaced with a "Speed N%" button that opens a menu with a slider and a number field, since a fixed set of presets does not cover the full 20-200% range usefully. The button and menu are DOM elements this script creates and maintains itself, since the toolbar is re-rendered by Vue on every tab navigation: a poll every 500ms re-creates them if missing and re-binds them to the (possibly new) upstream input, and removes them again only once the toolbar itself disappears. Applying a speed writes to the upstream input and dispatches native `input`/`change` events on it, which is what the Vue binding listens for; the upstream watcher clamps values below 20 to 20, so this addon clamps to the same [20, 200] range. The hide rule for the upstream input is scoped to `.toolbar .scroll .select-percentage` because the same `select-percentage` class is reused by the per-track volume input elsewhere in the UI, which must stay visible. The menu opens above the Speed button and stays inside the viewport: full width on phones, anchored to the button's left edge (clamped to the viewport) on desktop.
+// Upstream's speed control (`div.select-percentage`, a plain number input in the toolbar) is hidden at every width and replaced with a split control: a percentage button that toggles playback between 100% and the last non-100% speed on a single tap, paired with a caret button that opens a menu with a slider and a number field, since a fixed set of presets does not cover the full 20-200% range usefully and most sessions only ever alternate between full speed and one practice speed. The control and menu are DOM elements this script creates and maintains itself, since the toolbar is re-rendered by Vue on every tab navigation: a poll every 500ms re-creates the control if missing and re-binds it to the (possibly new) upstream input, and removes it again only once the toolbar itself disappears. Applying a speed writes to the upstream input and dispatches native `input`/`change` events on it, which is what the Vue binding listens for; the upstream watcher clamps values below 20 to 20, so this addon clamps to the same [20, 200] range. The hide rule for the upstream input is scoped to `.toolbar .scroll .select-percentage` because the same `select-percentage` class is reused by the per-track volume input elsewhere in the UI, which must stay visible. The menu opens above the speed control and stays inside the viewport: full width on phones, anchored to the control's left edge (clamped to the viewport) on desktop.
 //
 // At every width, the track-selector button also gets a small inline SVG icon inserted before the (phone-hidden) name span, picked from the current track's MIDI program via a fixed category map (percussion checked first, since drum tracks report program 0 like a piano; see `categoryForTrack`). On phones this is the only visible content, since the name text is hidden via CSS; on desktop the icon sits to the left of the visible name for consistency with the rest of the toolbar. The dropdown list itself keeps the full track names. The button may be re-created by Vue, so the icon is re-inserted whenever it is missing, the same way the speed button handles re-creation.
 //
 // Audio list rows (`.audio-list .item`) get the same treatment: an icon derived from the row's own visible text (`Synth`, `Youtube: …`, `No Audio…`, or a filename) via `audioRowKey`, inserted once per row (guarded via `dataset.enhanced`) the same way track list rows get their icon in `enhanceLists`.
 //
-// Icon path data (`INSTRUMENT_ICONS`, `AUDIO_ICONS`) is taken from the game-icons.net set by Delapouite, Caro Asercion, Zajkonur and Skoll, licensed CC BY 3.0 (https://creativecommons.org/licenses/by/3.0/). The toggle-button icons (`TOGGLE_ICONS`) are from the same set: Loop and Count in by Lorc, Metronome by Delapouite.
+// Icon path data (`INSTRUMENT_ICONS`, `AUDIO_ICONS`) is taken from the game-icons.net set by Delapouite, Caro Asercion, Zajkonur and Skoll, licensed CC BY 3.0 (https://creativecommons.org/licenses/by/3.0/). The toggle-button and speed-menu-caret icons (`TOGGLE_ICONS`) are minimal hand-drawn stroke glyphs instead, built by `createStrokeIcon` rather than picked from that set, since a 24×24 stroke icon reads more cleanly at that size than a scaled-down filled glyph and needs no external attribution.
 //
 // The tab list page marks tabs that have a render (`hasRender`, added server-side) with a small icon after the title: the Dockerfile patch gives the title element a `has-render` class instead of appending a plain emoji, and the CSS here paints a `::after` pseudo-element masked to `AUDIO_ICONS.file`'s own path data through a data-URI (`maskUrl`), since a stylesheet has no other way to reach that path data.
 //
 // The Solo/Mute buttons in the track sheet (`.list-button.solo`/`.mute`) collapse to single-letter `S`/`M` chips (via `::before`; the row's own `Solo`/`Mute` text is hidden with `font-size: 0`) at every width, coloured when active, since spelling both words out left too little room for the track name once the sheet is this narrow; the sheet's close glyph shrinks with it (still a 44×44 tap target, just a smaller icon inside) to match. Hover backgrounds on these chips and on the list row itself are dropped under `@media (hover: none)`, since a touch "hover" on such a device is really the tap itself and never clears until something else is tapped, leaving a chip visibly stuck highlighted after use.
+//
+// Solo and Mute are reimplemented by this addon instead of left to the upstream Vue component: upstream's own `toggleSolo` mutes every other track directly rather than calling alphaTab's own `changeTrackSolo`, which means only one track can ever be soloed and the synth's own per-channel solo state is never actually touched. This addon intercepts the chip clicks in the capture phase (before Vue's own `onClick` fires on the same element) and tracks solo/mute per track index in its own two `Set`s, replaying them through `api.changeTrackSolo`/`api.changeTrackMute` so multiple tracks can be soloed at once. The synth recreates its whole channel graph on every audio-source switch (Synth ↔ Render ↔ YouTube), which drops all channel state including solo/mute, so this addon re-applies its two `Set`s on every `api.playerReady` event, not just once at startup. Solo/Mute only affect the synth's own channels, so with an external audio source (Render, YouTube, an uploaded file) they have no audible effect; the chips are dimmed and given an explanatory title in that state, while the underlying `Set`s are kept so they take effect again once the Synth source is reselected.
 //
 // `.toolbar`, its open list, the speed menu and the score container get `touch-action: manipulation` under `@media (pointer: coarse)`, so a double-tap on any of these controls fires its own click handler instead of the browser's double-tap-to-zoom. The volume knob's own `touch-action: none` still wins over it there, since `touch-action` is not inherited but the effective value browsers use is the intersection of an element and its ancestors, and `none` is the more restrictive of the two.
 //
@@ -24,7 +26,9 @@
 //
 // The per-track volume input becomes an SVG dial: drag vertically or use the arrow keys to change it, double-click to reset to 100%; dragging draws locally on every pointer move but only writes through to the upstream input (native setter plus `input`/`change` events, which is what the Vue binding listens for) once per animation frame, and on release. The addon keeps its own last-set-value-per-track map because the upstream input itself is re-created at 100% every time the list is reopened, while the actual gain the synth is using stays wherever it was left; that map is what re-seeds the dial (and the hidden input) on the next open.
 //
-// The Audio button gets an icon and a text label mirroring the current source (Synth / Backing / YouTube / Muted / the render or upload filename), read off the Vue component instance's `currentAudio` field rather than scraped from the DOM, since the button itself carries no indication of which source is active; the component instance is found once by walking the app's internal vnode tree (there is no public API for it) and cached, re-found only if the cached reference stops resolving to a live component.
+// A double-click resets the knob to 100% for mouse users, but touch screens do not reliably synthesize `dblclick` from two taps, so the knob also recognizes its own double-tap: two `pointerdown` events within 300ms and 10px of each other, with no drag in between, reset the value the same way. `setPointerCapture` is wrapped in try/catch since synthetic pointer events (as used in tests) throw on it.
+//
+// The Audio button gets an icon and a text label mirroring the current source (Synth / Backing / YouTube / Muted / the render or upload filename), read off the Vue component instance's `currentAudio` field rather than scraped from the DOM, since the button itself carries no indication of which source is active; the component instance is found once by walking the app's internal vnode tree (there is no public API for it) and cached, re-found only if the cached reference stops resolving to a live component. The track sheet reads the same `currentAudio` field to dim the Solo/Mute chips and mark `.track-list` with `data-external-audio` whenever the source isn't the synth, since those controls have no audible effect otherwise.
 //
 // The tab page's own scoped stylesheet is a separate chunk that Vue's router lazy-loads only once that route mounts, so it lands in `<head>` after this script's own `<style>` element (inserted at the very first tick, before navigation); at equal CSS specificity the later stylesheet wins, which flips several of the sheet-position overrides below back to upstream's desktop layout. Every tick re-appends this script's `<style>` element to the end of `<head>` if something has been added after it, which keeps it winning ties against that chunk (and any other stylesheet loaded later) without inflating selectors with specificity hacks.
 //
@@ -57,11 +61,10 @@
   }
 
   const TOGGLE_ICONS = {
-    loop: "M252.314 19.957c-72.036.363-142.99 33.534-189.18 95.97-69.83 94.39-59.125 223.32 19.85 304.993l-37.238 50.332 151.22-22.613L174.35 297.42l-43.137 58.308c-44.08-54.382-47.723-133.646-4.16-192.53 30.676-41.466 77.863-63.504 125.758-63.753 16.344-.085 32.766 2.382 48.645 7.467l-6.963-46.55c-23.858-4.86-47.908-5.026-71.017-.997-59.232 7.322-113.994 39.918-148.157 91.215 35.65-65.89 103.774-105.918 176.043-107.744 1.673-.042 3.347-.063 5.023-.065 14.8-.01 29.748 1.596 44.597 4.905l48.608-7.268c-31.14-13.906-64.32-20.62-97.274-20.453zm212.93 22.055l-151.217 22.61 22.614 151.22 41.126-55.588c42.204 54.29 45.092 132.048 2.187 190.043-40.22 54.367-108.82 75.32-170.19 57.566l6.522 43.598c28.726 5.533 58.236 4.414 86.203-3.07 37.448-5.957 73.34-22.05 103.16-47.728-49.196 54.65-122.615 77.514-191.744 64.34l-55.8 8.344c99.03 43.7 218.402 14.77 285.51-75.938 69.13-93.445 59.34-220.743-17.483-302.53l39.114-52.866z",
-    countin:
-      "M92.656 19.188v41.5h331.72v-41.5H92.655zM119.5 79.374V433.53h22.28V79.376H119.5zm46.594 0c3.212 43.324 13.312 82.022 27.78 110.906 17.685 35.304 40.845 54.75 64.064 54.75 23.218 0 46.346-19.446 64.03-54.75 14.47-28.883 24.57-67.58 27.782-110.905H166.094zm209.156 0V433.53h22.28V79.376h-22.28zm-117.313 185.22c-23.218 0-46.378 19.415-64.062 54.717-14.835 29.614-25.098 69.562-28.03 114.22H350c-2.933-44.658-13.197-84.606-28.03-114.22-17.686-35.302-40.814-54.718-64.033-54.718zM92.657 452.218v41.467h331.718V452.22H92.655z",
-    metronome:
-      "M256 81c-7.7 0-15.5.33-23 .95V119h46V81.95c-7.5-.62-15.3-.95-23-.95zm-41 3.07c-4.8.76-9.5 1.65-13.9 2.69-14.7 3.46-26.3 8.71-32.8 14.04l-22.4 140.3L215 341V137h-23v-18h23V84.07zm82 0V119h23v18h-23v238.4c30.6 2.8 54.5 19.5 73.7 40.5 11 12.2 20.6 25.8 29.6 39.4l-56.6-354.5c-6.5-5.33-18.1-10.58-32.8-14.04-4.4-1.04-9.1-1.93-13.9-2.69zM39.34 90.79L24.66 101.2l20.89 29.6 15.14-9.9-21.35-30.11zm54.81 29.71l-56.04 36.7L82.56 183l17.54-11.5-5.95-51zM233 137v46h46v-46h-46zm-124.8 50.8l-15.3 10 48.9 69.2-30.1 188.3c9-13.6 18.6-27.2 29.6-39.4 19.2-21 43.1-37.7 73.7-40.5v-2.8l-73.2-105.7 4.1-26-37.7-53.1zM233 201v46h46v-46h-46zm0 64v46h46v-46h-46zm0 64v38l5.5 8H279v-46h-46zm206 23v23h-33.2l2.9 18H439v23h18v-64h-18zm-215 41c-29 0-50.3 14.1-69.3 35.1-15.5 17-28.9 38.4-42.1 58.9h286.8c-13.2-20.5-26.6-41.9-42.1-58.9-19-21-40.3-35.1-69.3-35.1h-37l12.4 17.9-14.8 10.2-19.5-28.1H224z",
+    loop: "M16.9 7.1 A7 7 0 1 1 7.1 7.1 M7.1 11.1 L7.1 7.1 L3.1 7.1",
+    countin: "M6 3 H18 L12 12 L18 21 H6 L12 12 Z",
+    metronome: "M12 3 L19 20 H5 Z M12 20 L14 8 M10.4 13.6 H15.2",
+    caret: "M6 15 L12 9 L18 15",
   }
 
   function maskUrl(pathData) {
@@ -125,13 +128,21 @@
 	font-size: 15px;
 	font-weight: 700;
 }
-.toolbar .track-list .track .list-button.solo.active {
+.toolbar .track-list .track[data-solo="1"] .list-button.solo {
 	background-color: #ffc107;
 	color: #212529;
 }
-.toolbar .track-list .track .list-button.mute.active {
+.toolbar .track-list .track[data-mute="1"] .list-button.mute {
 	background-color: #dc3545;
 	color: #fff;
+}
+.toolbar .track-list .track .list-button.active {
+	background-color: #49535a;
+}
+.toolbar .track-list[data-external-audio="1"] .list-button.solo,
+.toolbar .track-list[data-external-audio="1"] .list-button.mute {
+	opacity: 0.4;
+	pointer-events: none;
 }
 @media (hover: none) {
 	.toolbar .track-list .track .list-button.solo:hover,
@@ -241,6 +252,16 @@
 .toolbar .scroll button.btn-primary.active::after {
 	clip-path: polygon(22% 0, 100% 0, 100% 100%, 22% 100%);
 }
+.toolbar .scroll button.btn-primary.active {
+	--bs-btn-bg: #3131c6;
+	--bs-btn-border-color: #3131c6;
+	--bs-btn-hover-bg: #3131c6;
+	--bs-btn-hover-border-color: #3131c6;
+	--bs-btn-active-bg: #3131c6;
+	--bs-btn-active-border-color: #3131c6;
+	--bs-btn-active-color: #fff;
+	--bs-btn-hover-color: #fff;
+}
 .toolbar .scroll button.btn-primary > span svg {
 	display: none;
 }
@@ -262,14 +283,38 @@
 .toolbar .scroll > button.btn-secondary[data-toggle-icon] > svg:not(.toggle-icon) {
 	display: none;
 }
-.toolbar .scroll > button.btn-secondary[data-toggle-icon="loop"].active .toggle-icon {
-	color: #20c997;
+.toolbar .scroll > button.btn-secondary[data-toggle-icon].active .toggle-icon {
+	color: #fff;
 }
-.toolbar .scroll > button.btn-secondary[data-toggle-icon="countin"].active .toggle-icon {
-	color: #fd7e14;
+.toolbar .scroll > button.btn-secondary[data-toggle-icon="loop"].active {
+	--bs-btn-bg: #198754;
+	--bs-btn-border-color: #198754;
+	--bs-btn-hover-bg: #198754;
+	--bs-btn-hover-border-color: #198754;
+	--bs-btn-active-bg: #198754;
+	--bs-btn-active-border-color: #198754;
+	--bs-btn-active-color: #fff;
+	--bs-btn-hover-color: #fff;
 }
-.toolbar .scroll > button.btn-secondary[data-toggle-icon="metronome"].active .toggle-icon {
-	color: #0dcaf0;
+.toolbar .scroll > button.btn-secondary[data-toggle-icon="countin"].active {
+	--bs-btn-bg: #ca6510;
+	--bs-btn-border-color: #ca6510;
+	--bs-btn-hover-bg: #ca6510;
+	--bs-btn-hover-border-color: #ca6510;
+	--bs-btn-active-bg: #ca6510;
+	--bs-btn-active-border-color: #ca6510;
+	--bs-btn-active-color: #fff;
+	--bs-btn-hover-color: #fff;
+}
+.toolbar .scroll > button.btn-secondary[data-toggle-icon="metronome"].active {
+	--bs-btn-bg: #087990;
+	--bs-btn-border-color: #087990;
+	--bs-btn-hover-bg: #087990;
+	--bs-btn-hover-border-color: #087990;
+	--bs-btn-active-bg: #087990;
+	--bs-btn-active-border-color: #087990;
+	--bs-btn-active-color: #fff;
+	--bs-btn-hover-color: #fff;
 }
 .toolbar .scroll button.btn-secondary.disabled {
 	opacity: 0.5;
@@ -331,6 +376,26 @@
 	flex: 0 0 auto;
 	color: #adb5bd;
 }
+.speed-control .btn {
+	height: 44px;
+	min-height: 44px;
+}
+.speed-toggle-btn {
+	min-width: 62px;
+}
+.speed-caret-btn {
+	width: 34px;
+	min-width: 34px;
+	padding: 0;
+}
+.speed-control.speed-on .btn {
+	--bs-btn-bg: #3131c6;
+	--bs-btn-border-color: #3131c6;
+	--bs-btn-hover-bg: #2a2aa8;
+	--bs-btn-hover-border-color: #2a2aa8;
+	--bs-btn-active-bg: #2a2aa8;
+	color: #fff;
+}
 @media (max-width: 640px) {
 	.toolbar {
 		height: auto;
@@ -354,7 +419,7 @@
 	.toolbar .scroll button.btn-primary {
 		order: 1;
 	}
-	.toolbar .scroll > button.btn-secondary:not(.speed-menu-btn) {
+	.toolbar .scroll > button.btn-secondary {
 		order: 2;
 		position: static;
 	}
@@ -364,14 +429,14 @@
 	.toolbar .scroll .audio-selector {
 		order: 4;
 	}
-	.toolbar .scroll .speed-menu-btn {
+	.toolbar .scroll .speed-control {
 		order: 6;
 	}
 	.toolbar .scroll .btn-edit {
 		order: 7;
 	}
 	.toolbar .scroll .btn-edit button,
-	.toolbar .scroll .speed-menu-btn {
+	.toolbar .scroll .speed-control {
 		padding: 6px 15px;
 	}
 	.toolbar .scroll .track-selector .button {
@@ -461,19 +526,29 @@
   const KNOB_INDICATOR_INNER_RADIUS = 6.75
   const KNOB_INDICATOR_OUTER_RADIUS = 14.25
   const KNOB_STEP = 5
+  const KNOB_DOUBLE_TAP_MS = 300
+  const KNOB_DOUBLE_TAP_PX = 10
+  const DEFAULT_SLOW_SPEED = 70
 
   const nativeValueSetter = Object.getOwnPropertyDescriptor(
     window.HTMLInputElement.prototype,
     "value",
   ).set
 
-  let menuButton = null
+  let speedControl = null
+  let toggleButton = null
+  let caretButton = null
+  let rememberedSpeed = DEFAULT_SLOW_SPEED
   let menuElement = null
   let sliderInput = null
   let valueInput = null
   let boundInput = null
   let observedToolbar = null
   let vueProxy = null
+  let observedApi = null
+  let observedScore = null
+  const soloTracks = new Set()
+  const mutedTracks = new Set()
   const volumeByTrack = new Map()
   const listObserver = new MutationObserver(enhanceLists)
 
@@ -490,7 +565,26 @@
   }
 
   function syncLabel() {
-    if (menuButton) menuButton.textContent = `Speed ${currentSpeed()}%`
+    const speed = currentSpeed()
+    if (toggleButton) toggleButton.textContent = `${speed}%`
+    if (speed !== 100) rememberedSpeed = speed
+    if (speedControl) speedControl.classList.toggle("speed-on", speed !== 100)
+    if (toggleButton)
+      toggleButton.setAttribute("aria-pressed", String(speed !== 100))
+    if (caretButton)
+      caretButton.setAttribute(
+        "aria-expanded",
+        String(Boolean(menuElement) && !menuElement.hidden),
+      )
+  }
+
+  function toggleSpeed() {
+    const speed = currentSpeed()
+    if (speed === 100) applySpeed(rememberedSpeed)
+    else {
+      rememberedSpeed = speed
+      applySpeed(100)
+    }
   }
 
   function syncMenuInputs(speed) {
@@ -526,13 +620,16 @@
   }
 
   function openMenu() {
-    positionMenu(menuButton.getBoundingClientRect())
+    positionMenu(speedControl.getBoundingClientRect())
     syncMenuInputs(currentSpeed())
     menuElement.hidden = false
+    syncLabel()
   }
 
   function closeMenu() {
-    if (menuElement) menuElement.hidden = true
+    if (!menuElement) return
+    menuElement.hidden = true
+    syncLabel()
   }
 
   function toggleMenu() {
@@ -540,25 +637,51 @@
     else closeMenu()
   }
 
-  function createMenuButton(scroll) {
-    const button = document.createElement("button")
-    button.type = "button"
-    button.className = "btn btn-secondary speed-menu-btn"
+  function createSpeedControl(scroll) {
+    const group = document.createElement("div")
+    group.className = "btn-group speed-control"
+
+    const toggle = document.createElement("button")
+    toggle.type = "button"
+    toggle.className = "btn btn-secondary speed-toggle-btn"
+    toggle.textContent = "100%"
+    toggle.setAttribute("aria-label", "Toggle playback speed")
+
+    const caret = document.createElement("button")
+    caret.type = "button"
+    caret.className = "btn btn-secondary speed-caret-btn"
+    caret.setAttribute("aria-haspopup", "dialog")
+    caret.setAttribute("aria-label", "Open playback speed menu")
+    const caretIcon = createStrokeIcon("toggle-icon")
+    caret.appendChild(caretIcon)
+    applyIconCategory(caretIcon, TOGGLE_ICONS, "caret")
+
     const reference = scroll.querySelector("button.btn")
     if (reference) {
       for (const attribute of reference.attributes) {
-        if (attribute.name.startsWith("data-v-"))
-          button.setAttribute(attribute.name, attribute.value)
+        if (attribute.name.startsWith("data-v-")) {
+          toggle.setAttribute(attribute.name, attribute.value)
+          caret.setAttribute(attribute.name, attribute.value)
+        }
       }
     }
-    button.addEventListener("click", (event) => {
+    toggle.addEventListener("click", (event) => {
+      event.stopPropagation()
+      toggleSpeed()
+    })
+    caret.addEventListener("click", (event) => {
       event.stopPropagation()
       toggleMenu()
     })
+
+    group.append(toggle, caret)
     const percentageInput = scroll.querySelector(".select-percentage")
-    if (percentageInput) scroll.insertBefore(button, percentageInput)
-    else scroll.appendChild(button)
-    return button
+    if (percentageInput) scroll.insertBefore(group, percentageInput)
+    else scroll.appendChild(group)
+
+    toggleButton = toggle
+    caretButton = caret
+    return group
   }
 
   function createMenu() {
@@ -615,9 +738,11 @@
   }
 
   function removeSpeedUi() {
-    if (menuButton) menuButton.remove()
+    if (speedControl) speedControl.remove()
     if (menuElement) menuElement.remove()
-    menuButton = null
+    speedControl = null
+    toggleButton = null
+    caretButton = null
     menuElement = null
     sliderInput = null
     valueInput = null
@@ -644,6 +769,21 @@
     icon.setAttribute("width", "24")
     icon.setAttribute("height", "24")
     icon.setAttribute("fill", "currentColor")
+    icon.appendChild(document.createElementNS(SVG_NS, "path"))
+    return icon
+  }
+
+  function createStrokeIcon(className) {
+    const icon = document.createElementNS(SVG_NS, "svg")
+    icon.setAttribute("class", className)
+    icon.setAttribute("viewBox", "0 0 24 24")
+    icon.setAttribute("width", "24")
+    icon.setAttribute("height", "24")
+    icon.setAttribute("fill", "none")
+    icon.setAttribute("stroke", "currentColor")
+    icon.setAttribute("stroke-width", "2")
+    icon.setAttribute("stroke-linecap", "round")
+    icon.setAttribute("stroke-linejoin", "round")
     icon.appendChild(document.createElementNS(SVG_NS, "path"))
     return icon
   }
@@ -681,7 +821,7 @@
       playButton.title = "Play/Pause"
     }
     scroll
-      .querySelectorAll(":scope > button.btn-secondary:not(.speed-menu-btn)")
+      .querySelectorAll(":scope > button.btn-secondary")
       .forEach((button) => {
         const label = button.textContent.trim()
         const key = toggleKeyForLabel(label)
@@ -691,7 +831,7 @@
         button.title = label
         let icon = button.querySelector(".toggle-icon")
         if (!icon) {
-          icon = createTrackIcon("toggle-icon")
+          icon = createStrokeIcon("toggle-icon")
           button.insertBefore(icon, button.firstChild)
         }
         applyIconCategory(icon, TOGGLE_ICONS, key)
@@ -870,6 +1010,10 @@
     let dragStartY = 0
     let dragStartValue = KNOB_DEFAULT
     let pendingFrame = null
+    let lastTapTime = 0
+    let lastTapX = 0
+    let lastTapY = 0
+    let tapDragged = false
 
     const scheduleWrite = (value) => {
       if (pendingFrame) return
@@ -892,13 +1036,35 @@
     }
 
     knob.addEventListener("pointerdown", (event) => {
-      knob.setPointerCapture(event.pointerId)
+      const now = Date.now()
+      const isDoubleTap =
+        now - lastTapTime < KNOB_DOUBLE_TAP_MS &&
+        Math.abs(event.clientX - lastTapX) < KNOB_DOUBLE_TAP_PX &&
+        Math.abs(event.clientY - lastTapY) < KNOB_DOUBLE_TAP_PX &&
+        !tapDragged
+      if (isDoubleTap) {
+        setValue(KNOB_DEFAULT, true)
+        lastTapTime = 0
+        return
+      }
+      lastTapTime = now
+      lastTapX = event.clientX
+      lastTapY = event.clientY
+      tapDragged = false
+      try {
+        knob.setPointerCapture(event.pointerId)
+      } catch {}
       activePointerId = event.pointerId
       dragStartY = event.clientY
       dragStartValue = volumeByTrack.get(track.index) ?? KNOB_DEFAULT
     })
     knob.addEventListener("pointermove", (event) => {
       if (event.pointerId !== activePointerId) return
+      if (
+        Math.abs(event.clientX - lastTapX) > KNOB_DOUBLE_TAP_PX ||
+        Math.abs(event.clientY - lastTapY) > KNOB_DOUBLE_TAP_PX
+      )
+        tapDragged = true
       const value =
         dragStartValue + (dragStartY - event.clientY) / KNOB_PIXELS_PER_PERCENT
       setValue(value, false)
@@ -974,6 +1140,48 @@
     )
   }
 
+  function applyTrackStates() {
+    const api = window.api
+    if (!api || !api.score) return
+    const tracks = api.score.tracks
+    api.changeTrackSolo(tracks, false)
+    api.changeTrackMute(tracks, false)
+    const soloed = tracks.filter((track) => soloTracks.has(track.index))
+    if (soloed.length) api.changeTrackSolo(soloed, true)
+    const muted = tracks.filter((track) => mutedTracks.has(track.index))
+    if (muted.length) api.changeTrackMute(muted, true)
+  }
+
+  function syncTrackRowStates() {
+    document
+      .querySelectorAll(".toolbar .track-list .track.item")
+      .forEach((row) => {
+        const trackIndex = Number(row.dataset.trackIndex)
+        if (soloTracks.has(trackIndex)) row.dataset.solo = "1"
+        else delete row.dataset.solo
+        if (mutedTracks.has(trackIndex)) row.dataset.mute = "1"
+        else delete row.dataset.mute
+      })
+  }
+
+  function syncTrackListAudioState() {
+    const trackList = document.querySelector(".toolbar .track-list")
+    if (!trackList) return
+    const proxy = getVueProxy()
+    const currentAudio = proxy && proxy.currentAudio
+    const isExternal =
+      typeof currentAudio === "string" && currentAudio !== "synth"
+    if (isExternal) trackList.dataset.externalAudio = "1"
+    else delete trackList.dataset.externalAudio
+    trackList
+      .querySelectorAll(".list-button.solo, .list-button.mute")
+      .forEach((button) => {
+        if (isExternal)
+          button.title = "Solo/Mute work with the Synth audio source"
+        else button.removeAttribute("title")
+      })
+  }
+
   function enhanceLists() {
     document
       .querySelectorAll(".toolbar .track-list .track.item")
@@ -981,6 +1189,7 @@
         const track =
           window.api && window.api.score && window.api.score.tracks[index]
         if (!track) return
+        row.dataset.trackIndex = String(track.index)
         if (row.dataset.enhanced !== "1") {
           row.dataset.enhanced = "1"
           insertRowIcon(row, track)
@@ -988,6 +1197,7 @@
         }
         applyTrackName(row, track)
       })
+    syncTrackRowStates()
     document.querySelectorAll(".toolbar .audio-list .item").forEach((row) => {
       if (row.dataset.enhanced === "1") return
       row.dataset.enhanced = "1"
@@ -1012,14 +1222,25 @@
 
     if (!menuElement || !document.body.contains(menuElement))
       menuElement = createMenu()
-    if (!menuButton || !scroll.contains(menuButton))
-      menuButton = createMenuButton(scroll)
+    if (!speedControl || !scroll.contains(speedControl))
+      speedControl = createSpeedControl(scroll)
 
     const input = findUpstreamInput(scroll)
     if (input && input !== boundInput) bindUpstreamInput(input)
     syncLabel()
     syncTrackIcon(scroll)
     syncToggleButtons(scroll)
+
+    if (window.api !== observedApi) {
+      observedApi = window.api
+      if (observedApi) observedApi.playerReady.on(applyTrackStates)
+    }
+    if (window.api && window.api.score !== observedScore) {
+      observedScore = window.api.score
+      soloTracks.clear()
+      mutedTracks.clear()
+      applyTrackStates()
+    }
 
     if (toolbar !== observedToolbar) {
       listObserver.disconnect()
@@ -1029,11 +1250,35 @@
     }
 
     syncAudioLabel()
+    syncTrackListAudioState()
   }
 
+  document.addEventListener(
+    "click",
+    (event) => {
+      const button = event.target.closest(
+        ".toolbar .track-list .track .list-button.solo, .toolbar .track-list .track .list-button.mute",
+      )
+      if (!button) return
+      event.stopPropagation()
+      const row = button.closest(".track.item")
+      const trackIndex = Number(row.dataset.trackIndex)
+      const trackSet = button.classList.contains("solo")
+        ? soloTracks
+        : mutedTracks
+      if (trackSet.has(trackIndex)) trackSet.delete(trackIndex)
+      else trackSet.add(trackIndex)
+      applyTrackStates()
+      syncTrackRowStates()
+    },
+    true,
+  )
   document.addEventListener("click", (event) => {
     if (!menuElement || menuElement.hidden) return
-    if (menuElement.contains(event.target) || event.target === menuButton)
+    if (
+      menuElement.contains(event.target) ||
+      speedControl.contains(event.target)
+    )
       return
     closeMenu()
   })
