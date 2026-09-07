@@ -1,7 +1,8 @@
 # It's MyTabs with two small behaviour patches:
 #  1. a tab opens with render.mp3 (the renderer's output) as the audio source instead of the MIDI synth,
 #     unless the browser already remembers a choice;
-#  2. the tab list marks tabs that have a render (backend adds `hasRender`, the list shows a headphones mark);
+#  2. the tab list marks tabs that have a render (backend adds `hasRender`, the list gives the title a
+#     `has-render` class; mobile-ui.js paints the mark, a small masked icon, from that class);
 #  3. audio sync uses a sync point at every tempo change instead of a single one at bar 1: alphaTab keeps the
 #     cursor speed of the last sync point, so with one point the cursor drifted after every tempo change;
 #  4. when the audio resumes after buffering ("playing" event) the cursor is snapped back to the exact position:
@@ -20,9 +21,11 @@
 #  9. Cache-Control (10 min) on the tab audio endpoint, so the engine's fetch reuses the element's
 #     download of render.mp3;
 #  10. mobile-ui.js: phone layout for the bottom toolbar below a max-width of 640px, wrapping it
-#      into rows, restyling Loop/Count in/Metronome as switch-style toggles, replacing the
-#      speed number input with a "Speed N%" button that opens a slider/number speed menu (at every
-#      width), and a per-track instrument icon (game-icons.net SVG set) on the track selector button;
+#      into rows; Play/Loop/Count in/Metronome as icon-only buttons at every width (game-icons.net
+#      SVG set, Play morphing between a triangle and pause bars); replacing the speed number input
+#      with a "Speed N%" button that opens a slider/number speed menu (at every width); a per-track
+#      instrument icon on the track selector button and track/audio list rows; and the tab list's
+#      render mark (see patch 2);
 #  11. play-ready.js: retries a Play press that lands during the synth's soundfont fetch, since
 #      api.play() is a silent no-op while the synth is not ready and the toolbar button never
 #      recovers on its own; Cache-Control (7 days) on the soundfont endpoint so repeat switches to
@@ -60,7 +63,8 @@ RUN set -eu; cd /app/dist/assets; f=$(ls Tab-*.js); \
     rm -f "$f.gz"; gzip -k -9 "$f"; chown deno:deno "$f" "$f.gz"; \
     i=$(ls index-*.js); \
     grep -q 'y("div",bC,_e(e.tab.title),1)' "$i"; \
-    sed -i 's#y("div",bC,_e(e.tab.title),1)#y("div",bC,_e(e.tab.title)+(e.tab.hasRender?" 🎧":""),1)#' "$i"; \
+    sed -i 's#y("div",bC,_e(e.tab.title),1)#y("div",{class:e.tab.hasRender?"title has-render":"title"},_e(e.tab.title),3)#' "$i"; \
+    grep -q 'has-render' "$i"; \
     rm -f "$i.gz"; gzip -k -9 "$i"; chown deno:deno "$i" "$i.gz"; \
     b=/app/backend/tab.ts; \
     grep -q '            tabs.push(tab);' "$b"; \
