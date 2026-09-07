@@ -18,6 +18,8 @@ headless. The player is patched so the cursor follows the MP3 exactly even acros
 - `deploy/tabs.example.conf` — nginx vhost for the jonasal/nginx-certbot container; the real `deploy/tabs.conf` is gitignored.
 - `soundfont/` — GM soundfont for the in-browser MIDI preview; `sf2mono.py` patches stereo samples to mono because
   alphaTab's synth drops them (presets go silent).
+  `sf2envelope.py` fixes the guitar/bass volume envelopes of the bundled sonivox bank (notes faded out 70 ms after the
+  attack); its output is committed as `app/sonivox.sf2` and copied into the player image.
 - `sf-compare/` — local A/B page for soundfonts (diagnostic).
 
 ## What is not in git and where it comes from
