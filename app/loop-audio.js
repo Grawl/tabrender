@@ -2,6 +2,8 @@
 
 // Range/loop playback of the render.mp3 backing track through an AudioWorklet instead of the <audio> element directly, so range looping can restart sample-accurately instead of through the element's seek+play round trip (see loop-fix.js for the symptom this replaces). This file wires the plumbing only: decoding render.mp3 into PCM, feeding it to loop-audio-worklet.js, and intercepting alphaTab's external-media output handler so play/pause/seek/volume/rate go to the worklet while it is engaged. Variable-rate time-stretching (WSOLA) is implemented in loop-audio-worklet.js; the debug object is window.__loopAudio below. At rate 1 the worklet is a plain passthrough.
 //
+// The render.mp3 fetch and decode can take several seconds on a slow connection, during which Play does nothing visible, so `decodeAndCache` reads the fetch response body itself (`fetchWithProgress`) instead of calling `arrayBuffer()` directly, tracking `loadedBytes/totalBytes` from the Content-Length header as it goes. That progress, plus the current phase, is exposed on the debug object for play-ready.js to poll: `state` gains `"fetching"` and `"decoding"` (during the fetch and the `decodeAudioData` call) and `"ready"` (decoded and cached for the current source, not yet engaged) alongside the existing `"unavailable"`/`"engine"`/`"fallback"`; `progress` is `0..1` while fetching and `null` otherwise; `fetchStartedAt` is the fetch's start time (`Date.now()`) so a consumer can tell a fresh fetch from a stale one, and `null` when idle.
+//
 // Module state, grouped below: the AudioContext/AudioWorkletNode engine itself; the decoded backing-track buffer (sample rate, frame count, cache key, and decode/size stats kept for a later commit's debug object); the loop range mirrored from alphaTab and pushed to the worklet; position-reporting bookkeeping; the watched <audio class="player"> element; and the watchdog's "last seen api/output" trackers, which only reinstall interception on a genuine change. oxfmt (0.2.0) hoists any comment placed directly before a variable declaration or as the sole content of a block out of its enclosing function, so this file keeps explanatory comments here in the header instead of inline.
 //
 // Switching the audio source away from render.mp3 (to the Synth) replaces alphaTab's player output without ever calling the proxy's own `pause()` — alphaTab just stops sending it work — so an engaged worklet kept rendering the backing track underneath the new synth output. The watchdog now stops the engine itself (the same worklet-pause + element-position mirroring `pause()` does, but without touching the old output's `raw.pause()`, which may already be torn down) whenever it notices the mode, player output, or api object has moved on while the engine was still active. The proxy's own `pause()` wraps its `raw.pause()` call for the same reason: it can be invoked mid-switch, after alphaTab has already started discarding the output it belongs to.
@@ -38,6 +40,9 @@
   let stretchSeq = 40
   let stretchOvl = 12
   let stretchSeek = 8
+  let decodePhase = null
+  let decodeProgress = null
+  let fetchStartedAt = null
 
   function validStretch(seq, ovl, seek) {
     return (
@@ -159,6 +164,43 @@
     engineActive = false
     lastPostedRange = null
     decodeGeneration++
+    clearDecodeProgress()
+  }
+
+  function clearDecodeProgress() {
+    decodePhase = null
+    decodeProgress = null
+    fetchStartedAt = null
+  }
+
+  async function fetchWithProgress(src, generation) {
+    const response = await fetch(src)
+    const totalHeader = response.headers.get("content-length")
+    const total = totalHeader ? Number(totalHeader) : 0
+    if (!response.body || !total) return await response.arrayBuffer()
+
+    const reader = response.body.getReader()
+    const chunks = []
+    let loaded = 0
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      if (generation !== decodeGeneration) {
+        reader.cancel().catch(() => {})
+        break
+      }
+      chunks.push(value)
+      loaded += value.byteLength
+      decodeProgress = loaded / total
+    }
+
+    const merged = new Uint8Array(loaded)
+    let offset = 0
+    for (const chunk of chunks) {
+      merged.set(chunk, offset)
+      offset += chunk.byteLength
+    }
+    return merged.buffer
   }
 
   async function decodeAndCache(sourceEl, src) {
@@ -171,24 +213,40 @@
     if (generation !== decodeGeneration) return
 
     const startedAt = performance.now()
+    decodePhase = "fetching"
+    decodeProgress = 0
+    fetchStartedAt = Date.now()
     let arrayBuffer
     try {
-      arrayBuffer = await (await fetch(src)).arrayBuffer()
+      arrayBuffer = await fetchWithProgress(src, generation)
     } catch (error) {
       console.error("loop-audio: failed to fetch backing track", error)
+      clearDecodeProgress()
       return
     }
-    if (generation !== decodeGeneration || sourceEl.currentSrc !== src) return
+    if (generation !== decodeGeneration || sourceEl.currentSrc !== src) {
+      clearDecodeProgress()
+      return
+    }
 
+    decodePhase = "decoding"
+    decodeProgress = null
     let decoded
     try {
       decoded = await ctx.decodeAudioData(arrayBuffer)
     } catch (error) {
       console.error("loop-audio: failed to decode backing track", error)
+      clearDecodeProgress()
       return
     }
-    if (generation !== decodeGeneration || sourceEl.currentSrc !== src) return
-    if (decoded.duration > 600) return
+    if (generation !== decodeGeneration || sourceEl.currentSrc !== src) {
+      clearDecodeProgress()
+      return
+    }
+    if (decoded.duration > 600) {
+      clearDecodeProgress()
+      return
+    }
 
     const { chL, chR } = convertToPcm(decoded)
     bufferMB = (chL.buffer.byteLength + chR.buffer.byteLength) / (1024 * 1024)
@@ -196,6 +254,7 @@
     sampleRate = decoded.sampleRate
     bufferLengthFrames = decoded.length
     cacheKey = src
+    clearDecodeProgress()
     node.port.postMessage({ type: "buffer", chL, chR, sampleRate }, [
       chL.buffer,
       chR.buffer,
@@ -421,8 +480,17 @@
   window.__loopAudio = {
     get state() {
       if (!engineAvailable) return "unavailable"
+      if (decodePhase === "fetching") return "fetching"
+      if (decodePhase === "decoding") return "decoding"
       if (engineActive) return "engine"
+      if (cacheKey !== null && el && cacheKey === el.currentSrc) return "ready"
       return "fallback"
+    },
+    get progress() {
+      return decodeProgress
+    },
+    get fetchStartedAt() {
+      return fetchStartedAt
     },
     get engineActive() {
       return engineActive
