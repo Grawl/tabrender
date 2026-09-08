@@ -31,8 +31,10 @@
 #      tab list's render mark (see patch 2);
 #  11. play-ready.js: retries a Play press that lands during the synth's soundfont fetch, since
 #      api.play() is a silent no-op while the synth is not ready and the toolbar button never
-#      recovers on its own; Cache-Control (7 days) on the soundfont endpoint so repeat switches to
-#      Synth don't re-download it.
+#      recovers on its own; also shows a loading pill and a Play button spinner whenever Play is
+#      pressed but nothing is audible yet (soundfont fetch, loop-audio.js's render.mp3
+#      fetch/decode, or <audio> buffering); Cache-Control (7 days) on the soundfont endpoint so
+#      repeat switches to Synth don't re-download it.
 # The start task runs with --cached-only: the image ships no deno.lock, so a plain start re-resolves npm
 # dependencies against the registry and hung when a newer hono was published; the cached tree is complete.
 # The preview soundfont is the bundled sonivox.sf2 with its guitar/bass instruments patched by
